@@ -8,6 +8,19 @@
 	# redirect from and no HTTP-01 challenge to answer. Without this Caddy would
 	# still try to bind 80 for a redirect it can never be asked for.
 	auto_https disable_redirects
+
+	# Which certificate to serve when the client names no server.
+	#
+	# Certificates are selected by SNI, but RFC 6066 permits only host names
+	# there — never an IP literal. So a browser opening https://10.1.2.136:2000
+	# sends no server name at all, Caddy finds nothing matching an empty name,
+	# and aborts the handshake with "tlsv1 alert internal error" — a connection
+	# that TCP-connects and then dies, having obtained its certificate happily.
+	#
+	# Naming the default is what makes an IP-addressed deployment work. It is
+	# harmless when PAYLINK_HOSTNAME is a real host name, because a browser
+	# sends SNI in that case and this is never consulted.
+	default_sni {$PAYLINK_HOST}
 }
 
 # The scheme is written out because the port is not 443: given a bare
@@ -44,8 +57,15 @@ https://{$PAYLINK_SITE} {
 
 	handle /api/v1/* {
 		reverse_proxy api:8080 {
-			# The API attributes rate limits and lockouts to this, and believes
-			# it only from the networks in PAYLINK_TRUSTED_PROXIES.
+			# Caddy logs this as an "unnecessary header_up". It is not, and it
+			# must not be removed on that advice.
+			#
+			# The default behaviour is to APPEND the peer to whatever
+			# X-Forwarded-For the client already sent. A caller who sets
+			# "X-Forwarded-For: 9.9.9.9" would then arrive as
+			# "9.9.9.9, <real peer>", and the API reads the first entry.
+			# Replacing the header outright is what stops a caller choosing the
+			# identity their rate limit and lockout are counted against.
 			header_up X-Forwarded-For {remote_host}
 		}
 	}

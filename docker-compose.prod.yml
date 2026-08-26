@@ -31,6 +31,10 @@ services:
     environment:
       # host:port — Caddy listens on the port named here.
       PAYLINK_SITE: ${PAYLINK_HOSTNAME:?set PAYLINK_HOSTNAME}:${PAYLINK_PORT}
+      # The host on its own. Caddy needs it without the port for default_sni,
+      # which is what lets a browser reach an IP-addressed deployment at all —
+      # see the comment in the Caddyfile.
+      PAYLINK_HOST: ${PAYLINK_HOSTNAME}
       PAYLINK_TLS: ${PAYLINK_TLS:-internal}
     depends_on:
       - web
