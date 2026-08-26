@@ -213,6 +213,18 @@ docker compose -f docker-compose.prod.yml logs caddy    # certificates
 curl -k https://localhost:2000/healthz                  # is the API answering
 ```
 
+**"required variable MYSQL_PASSWORD is missing a value"** does not mean the
+stack is broken — it is usually running perfectly. Compose only reads a file
+literally named `.env` when it expands `${...}` inside the compose file, and
+the secrets live in `.env.production`. The installer links the two names; if
+that link is missing, recreate it:
+
+```bash
+cd /opt/paylink && ln -s .env.production .env
+```
+
+Or pass `--env-file .env.production` on every command.
+
 Page does not load, in the order worth checking:
 
 1. does the address resolve to this server? `dig +short <hostname>`

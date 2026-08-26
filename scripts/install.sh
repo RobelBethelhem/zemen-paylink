@@ -123,6 +123,23 @@ ENVEOF
   echo "    wrote $ENV_FILE (chmod 600)"
 fi
 
+# Compose only auto-loads a file literally named ".env" when it expands
+# ${MYSQL_PASSWORD} and friends inside the compose file. This script always
+# passes --env-file, so the stack starts correctly — but every other command
+# that omits the flag fails with "required variable MYSQL_PASSWORD is missing
+# a value", which reads like the stack is broken when it is running perfectly.
+# Linking the two names makes the documented commands work as written.
+if [ -L .env ]; then
+  :
+elif [ -e .env ]; then
+  warn ".env already exists and is not a link to $ENV_FILE."
+  warn "Plain 'docker compose' commands may not see your secrets; add"
+  warn "  --env-file $ENV_FILE"
+else
+  ln -s "$ENV_FILE" .env
+  echo "    linked .env -> $ENV_FILE (so plain compose commands work)"
+fi
+
 say "Building images — first run takes a few minutes"
 docker compose -f docker-compose.prod.yml --env-file "$ENV_FILE" build
 
