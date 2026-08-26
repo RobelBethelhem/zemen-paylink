@@ -1,0 +1,60 @@
+# Secrets. Never commit these — .env.production holds the JWT secret and
+# PAYLINK_ENCRYPTION_KEY, and the encryption key is what every stored MPGS
+# password is sealed with. It is generated on the server by scripts/install.sh
+# and belongs only there.
+.env
+.env.local
+.env.production
+.env.*.local
+
+# The examples carry no real values and are meant to be read.
+!.env.*.example
+
+# Private keys and certificates, wherever they live. The dev HTTPS key under
+# web/certificates is a real private key: a key committed once stays in the
+# history forever, even after the file is deleted.
+*.pem
+*.key
+*.p12
+*.pfx
+certs/*
+!certs/.gitkeep
+web/certificates/
+
+# The development SQLite database. Production runs MySQL; this file carries
+# local test data and has no business on a server.
+*.db
+*.db-shm
+*.db-wal
+
+# Dependencies and build output — rebuilt from the lockfile, never stored.
+node_modules/
+.next/
+out/
+dist/
+build/
+
+# Compiled Go binaries.
+api/paylink
+api/server
+*.exe
+
+# Database dumps.
+backups/
+
+# Editor and OS noise.
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*~
+
+# Logs.
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# Unreferenced 1.2 MB prototype bundle — kept on disk, not in the repo.
+index.html

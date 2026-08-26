@@ -1,0 +1,35 @@
+# MySQL for local development. The API talks to it exactly as it will talk to a
+# managed MySQL in production, so what works here works there.
+#
+#   docker compose up -d db
+#   cd api && go run ./cmd/server
+services:
+  db:
+    image: mysql:8.4
+    container_name: paylink-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: paylink
+      MYSQL_USER: paylink
+      MYSQL_PASSWORD: paylink
+      # Development only. A managed database issues its own credentials.
+      MYSQL_ROOT_PASSWORD: paylink-root
+    command:
+      # utf8mb4 end to end, so Amharic survives the round trip.
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      # Left at MySQL's default on purpose: the queries are written to satisfy
+      # ONLY_FULL_GROUP_BY rather than to have it turned off.
+      - --sql-mode=ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
+    ports:
+      - "3306:3306"
+    volumes:
+      - paylink-mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-ppaylink-root"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  paylink-mysql:

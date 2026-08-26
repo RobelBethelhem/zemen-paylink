@@ -1,0 +1,57 @@
+# One address serves the whole portal: the pages, and the API under /api/v1.
+#
+# Everything is same-origin, which is what the sealed channel wants — no CORS,
+# and the browser's origin check passes without special handling.
+
+{
+	# This deployment does not use port 80, so there is no HTTP listener to
+	# redirect from and no HTTP-01 challenge to answer. Without this Caddy would
+	# still try to bind 80 for a redirect it can never be asked for.
+	auto_https disable_redirects
+}
+
+# The scheme is written out because the port is not 443: given a bare
+# host:port Caddy would serve plain HTTP, and the portal cannot work that way —
+# browsers withhold WebCrypto outside a secure context, so the sealed channel
+# would never open.
+https://{$PAYLINK_SITE} {
+	encode zstd gzip
+
+	# How this host proves who it is. Set PAYLINK_TLS to one of:
+	#
+	#   internal                    Caddy's own CA. Every device shows a warning
+	#                               until Caddy's root is trusted — fine for an
+	#                               internal pilot.
+	#   /certs/cert.pem /certs/key.pem
+	#                               a certificate the bank already owns; mount
+	#                               it into the caddy service.
+	#
+	# Let's Encrypt is not an option here: its challenges need port 80 or 443,
+	# and this server publishes neither.
+	tls {$PAYLINK_TLS}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	# The API is reached directly rather than through the portal's own rewrite,
+	# which saves a hop on every call. /healthz belongs to it too — a health
+	# check that answers from the wrong service is worse than none.
+	handle /healthz {
+		reverse_proxy api:8080
+	}
+
+	handle /api/v1/* {
+		reverse_proxy api:8080 {
+			# The API attributes rate limits and lockouts to this, and believes
+			# it only from the networks in PAYLINK_TRUSTED_PROXIES.
+			header_up X-Forwarded-For {remote_host}
+		}
+	}
+
+	# Everything else is the portal.
+	handle {
+		reverse_proxy web:3000
+	}
+}

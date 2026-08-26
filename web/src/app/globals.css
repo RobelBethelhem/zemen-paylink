@@ -1,0 +1,41 @@
+@import "./fonts.css";
+@import "./interactions.css";
+
+/* Global rules ported verbatim from the prototype. */
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:'IBM Plex Sans',system-ui,sans-serif;background:#F5F5F6;color:#141519;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+button{font-family:inherit}
+input,select,textarea{font-family:inherit;outline:none}
+a{color:#DA1E28;text-decoration:none}
+a:hover{color:#B0141C}
+::selection{background:#DA1E28;color:#fff}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#D3D3D7;border-radius:8px;border:2px solid #F5F5F6}
+input::placeholder,textarea::placeholder{color:#A9ABB3}
+@keyframes fadeUp{from{opacity:.5;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pop{0%{transform:scale(.5);opacity:0}60%{transform:scale(1.12)}100%{transform:scale(1);opacity:1}}
+@keyframes toastin{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes barGrow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+@keyframes dashDraw{from{stroke-dashoffset:1200}to{stroke-dashoffset:0}}
+@keyframes ping{0%{transform:scale(.9);opacity:.7}70%,100%{transform:scale(1.8);opacity:0}}
+[data-main]{margin-left:250px;transition:margin .2s ease}
+[data-scrim]{display:none}
+@media (max-width:920px){
+ [data-sidebar]{position:fixed;top:0;left:0;bottom:0;transform:translateX(-105%);transition:transform .3s cubic-bezier(.4,0,.2,1);z-index:120}
+ [data-sidebar][data-open="true"]{transform:none;box-shadow:0 30px 80px rgba(0,0,0,.5)}
+ [data-main]{margin-left:0 !important}
+ [data-hide-mobile]{display:none !important}
+ [data-scrim][data-open="true"]{display:block !important}
+ [data-pad]{padding:20px 18px !important}
+ [data-grid-kpi]{grid-template-columns:repeat(2,1fr) !important}
+ [data-grid-2]{grid-template-columns:1fr !important}
+ [data-grid-3]{grid-template-columns:1fr !important}
+ [data-switcher]{display:none !important}
+ [data-topnav-links]{display:none !important}
+}
+@media (min-width:921px){
+ [data-only-mobile]{display:none !important}
+}

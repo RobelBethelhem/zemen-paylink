@@ -1,0 +1,27 @@
+# This repository is authored on Windows and deployed on Linux. Without this,
+# Git checks scripts out with CRLF endings and the server fails them with
+# "bad interpreter: /bin/bash^M" — which looks nothing like a line-ending bug.
+#
+# Normalise everything to LF in the repository and on checkout.
+* text=auto eol=lf
+
+# Files where a stray CR is fatal rather than cosmetic.
+*.sh        text eol=lf
+Dockerfile  text eol=lf
+Caddyfile   text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.sql       text eol=lf
+
+# Binary — never touch these.
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.woff      binary
+*.woff2     binary
+*.ttf       binary
+*.pdf       binary
+*.gz        binary
+*.zip       binary

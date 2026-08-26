@@ -1,0 +1,86 @@
+# The whole portal on one server: TLS terminator, pages, API, database.
+#
+# Only Caddy is published. The portal, the API and MySQL talk to each other on
+# a private network and none of them is reachable from outside directly.
+#
+#   bash scripts/install.sh          # first time
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Named so its volumes never collide with the development stack in the same
+# directory. Without this they share one MySQL data directory — and because
+# MySQL only applies MYSQL_PASSWORD when it initialises an empty one, the
+# second stack to start would silently keep the first one's credentials and
+# fail to connect with the password it was given.
+name: paylink
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      # One port, chosen at install time. Nothing binds 80 or 443, so this can
+      # sit alongside whatever else is already on the host.
+      - "${PAYLINK_PORT:?set PAYLINK_PORT}:${PAYLINK_PORT}"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data      # certificates and Caddy's own CA live here
+      - caddy-config:/config
+      # Drop a certificate the bank already owns in ./certs and point
+      # PAYLINK_TLS at /certs/… to use it instead of issuing one.
+      - ./certs:/certs:ro
+    environment:
+      # host:port — Caddy listens on the port named here.
+      PAYLINK_SITE: ${PAYLINK_HOSTNAME:?set PAYLINK_HOSTNAME}:${PAYLINK_PORT}
+      PAYLINK_TLS: ${PAYLINK_TLS:-internal}
+    depends_on:
+      - web
+      - api
+
+  web:
+    build: ./web
+    image: paylink-web:latest
+    restart: unless-stopped
+    expose:
+      - "3000"
+
+  api:
+    build: ./api
+    image: paylink-api:latest
+    restart: unless-stopped
+    expose:
+      - "8080"
+    env_file:
+      - .env.production
+    environment:
+      # Binds every interface inside the container so Caddy can reach it. The
+      # container is not published, so this exposes nothing.
+      PAYLINK_ADDR: "0.0.0.0:8080"
+      PAYLINK_DATABASE: "paylink:${MYSQL_PASSWORD:?set MYSQL_PASSWORD}@tcp(db:3306)/paylink"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: paylink
+      MYSQL_USER: paylink
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --sql-mode=ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
+    volumes:
+      - paylink-mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  paylink-mysql:
+  caddy-data:
+  caddy-config:
