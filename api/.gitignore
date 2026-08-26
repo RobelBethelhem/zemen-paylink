@@ -2,5 +2,9 @@
 *.db
 *.db-shm
 *.db-wal
-server
-server.exe
+
+# Anchored with a leading slash: the compiled binary is api/server. Without
+# the slash this also matches api/cmd/server/ — the main package — and the
+# API silently ships with no source.
+/server
+/server.exe
