@@ -4,7 +4,8 @@ import { s } from "@/lib/css";
 import { useApp } from "@/store/AppProvider";
 
 export function Login() {
-  const { authBusy, authError, email, on, password, regDone, set } = useApp();
+  const { authBusy, authError, email, on, password, regDone, set, signedOutReason, takeover } =
+    useApp();
   return (
     <div data-auth="" style={s("min-height:100vh;display:grid;grid-template-columns:1.05fr 1fr")}>
       <div
@@ -112,6 +113,52 @@ export function Login() {
             style={s("width:100%;padding:13px 15px;border:1px solid #E3E3E6;border-radius:11px;font-size:14.5px;background:#FAFAFB;margin-bottom:22px")}
           />
           {" "}
+          {signedOutReason && !authError && !takeover ? (
+            <div
+              style={s("display:flex;gap:10px;background:#FEF3E2;border:1px solid #F5DCB0;color:#8A5800;border-radius:11px;padding:12px 14px;font-size:13px;line-height:1.55;margin-bottom:16px")}
+            >
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={s("flex-shrink:0;margin-top:1px")}>
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 7v5l3 2" />
+              </svg>
+              <span>
+                {signedOutReason === "idle"
+                  ? "You were signed out because the session was left inactive. Sign in to continue."
+                  : signedOutReason === "expired"
+                    ? "Your session reached its time limit and was signed out. Sign in to continue."
+                    : "This session was ended — its time ran out, or the account was signed in on another device."}
+              </span>
+            </div>
+          ) : null}
+          {takeover ? (
+            <div
+              style={s("background:#FEF3E2;border:1px solid #F5DCB0;color:#8A5800;border-radius:11px;padding:13px 15px;font-size:13px;line-height:1.55;margin-bottom:16px")}
+            >
+              <div style={s("display:flex;gap:10px")}>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={s("flex-shrink:0;margin-top:1px")}>
+                  <path d="M12 9v4M12 17h.01" />
+                  <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
+                </svg>
+                <span>{takeover}</span>
+              </div>
+              <div style={s("display:flex;gap:9px;margin-top:12px")}>
+                <button
+                  onClick={on.confirmTakeover}
+                  disabled={authBusy}
+                  style={s(`flex:1;padding:11px;background:${authBusy ? "#E86A72" : "#DA1E28"};color:#fff;border:none;border-radius:9px;font-size:13.5px;font-weight:600;cursor:${authBusy ? "wait" : "pointer"};font-family:inherit`)}
+                >
+                  {authBusy ? "Signing in…" : "Sign that session out and continue"}
+                </button>
+                <button
+                  onClick={on.cancelTakeover}
+                  disabled={authBusy}
+                  style={s("padding:11px 16px;background:#fff;color:#6B6D76;border:1px solid #E7E7EA;border-radius:9px;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit")}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : null}
           {authError ? (
             <div
               style={s("display:flex;gap:10px;background:#FDECED;border:1px solid #F5C6C9;color:#B0141C;border-radius:11px;padding:12px 14px;font-size:13px;line-height:1.55;margin-bottom:16px")}

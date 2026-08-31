@@ -30,11 +30,31 @@ type Claims struct {
 type Manager struct {
 	secret   []byte
 	ttl      time.Duration
+	idle     time.Duration
 	sessions *sessionSet
 }
 
-func NewManager(secret []byte, ttl time.Duration) *Manager {
-	return &Manager{secret: secret, ttl: ttl, sessions: newSessionSet()}
+func NewManager(secret []byte, ttl, idle time.Duration) *Manager {
+	// An idle window at least as long as the session itself could never fire,
+	// so treat that as "no separate idle rule" rather than silently keeping a
+	// setting that does nothing.
+	if idle <= 0 || idle > ttl {
+		idle = ttl
+	}
+	return &Manager{secret: secret, ttl: ttl, idle: idle, sessions: newSessionSet(idle)}
+}
+
+// TTL and Idle are published to the client so the browser can end a session at
+// the same moment the server does, rather than leaving someone looking at a
+// screen whose next click will fail. One definition, two enforcers.
+func (m *Manager) TTL() time.Duration  { return m.ttl }
+func (m *Manager) Idle() time.Duration { return m.idle }
+
+// ActiveSession reports the session an account already holds, and when it was
+// last used. Liveness is evaluated here rather than trusting the sweep, so a
+// session that has quietly expired or gone idle never blocks a fresh sign-in.
+func (m *Manager) ActiveSession(userID string) (time.Time, bool) {
+	return m.sessions.activeFor(userID)
 }
 
 func (m *Manager) Issue(u *domain.User) (string, time.Time, error) {
@@ -272,11 +292,9 @@ func UserFrom(ctx context.Context) (*domain.User, bool) {
 //
 // Held in memory deliberately. A restart signs everyone out, which is the safe
 // direction for the failure to fall.
-const (
-	// IdleTimeout ends a session left untouched — ASVS 3.3.2 for a level 2
-	// application, which is the bar a payment portal is measured at.
-	IdleTimeout = 30 * time.Minute
-)
+// The idle window is configured rather than fixed — see config.SessionIdle.
+// ASVS 3.3.2 wants a level 2 application to end an untouched session; how
+// short that is, is the bank's policy to set.
 
 type liveSession struct {
 	userID   string
@@ -286,17 +304,32 @@ type liveSession struct {
 
 type sessionSet struct {
 	mu       sync.Mutex
+	idle     time.Duration
 	sessions map[string]*liveSession
 }
 
-func newSessionSet() *sessionSet {
-	s := &sessionSet{sessions: map[string]*liveSession{}}
+func newSessionSet(idle time.Duration) *sessionSet {
+	s := &sessionSet{idle: idle, sessions: map[string]*liveSession{}}
 	go func() {
-		for range time.Tick(5 * time.Minute) {
+		// Swept at a fraction of the idle window. A dead session that lingers
+		// is not a security problem — touch refuses it either way — but it
+		// would be reported as a sign-in elsewhere and wrongly ask someone to
+		// evict a session that already ended.
+		tick := idle / 3
+		if tick < 30*time.Second {
+			tick = 30 * time.Second
+		}
+		for range time.Tick(tick) {
 			s.sweep()
 		}
 	}()
 	return s
+}
+
+// dead reports whether a session has passed either limit: the absolute end of
+// its life, or the idle window since it was last used.
+func (s *sessionSet) dead(live *liveSession, now time.Time) bool {
+	return now.After(live.expires) || now.Sub(live.lastSeen) > s.idle
 }
 
 func (s *sessionSet) sweep() {
@@ -304,7 +337,7 @@ func (s *sessionSet) sweep() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for id, live := range s.sessions {
-		if now.After(live.expires) || now.Sub(live.lastSeen) > IdleTimeout {
+		if s.dead(live, now) {
 			delete(s.sessions, id)
 		}
 	}
@@ -315,6 +348,26 @@ func (s *sessionSet) add(id, userID string, expires time.Time) {
 	s.mu.Lock()
 	s.sessions[id] = &liveSession{userID: userID, lastSeen: now, expires: expires}
 	s.mu.Unlock()
+}
+
+// activeFor finds a live session belonging to an account. Anything already
+// past a limit is dropped on the way past rather than reported, so a stale
+// entry cannot masquerade as somebody signed in elsewhere.
+func (s *sessionSet) activeFor(userID string) (time.Time, bool) {
+	now := time.Now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, live := range s.sessions {
+		if live.userID != userID {
+			continue
+		}
+		if s.dead(live, now) {
+			delete(s.sessions, id)
+			continue
+		}
+		return live.lastSeen, true
+	}
+	return time.Time{}, false
 }
 
 // touch confirms a session is still live and records the activity. It returns
@@ -328,7 +381,7 @@ func (s *sessionSet) touch(id string) bool {
 	if !ok {
 		return false
 	}
-	if now.After(live.expires) || now.Sub(live.lastSeen) > IdleTimeout {
+	if s.dead(live, now) {
 		delete(s.sessions, id)
 		return false
 	}

@@ -109,6 +109,11 @@ PAYLINK_JWT_SECRET=$JWT_SECRET
 PAYLINK_ENCRYPTION_KEY=$ENCRYPTION_KEY
 PAYLINK_BOOTSTRAP_PASSWORD=$BOOTSTRAP
 
+# Session policy. TTL is absolute and never extended; IDLE ends a session
+# sooner when it is left untouched. An account holds one session at a time.
+PAYLINK_SESSION_TTL=15m
+PAYLINK_SESSION_IDLE=3m
+
 PAYLINK_GATEWAY_HOST=test-gateway.mastercard.com
 PAYLINK_GATEWAY_API_VERSION=100
 

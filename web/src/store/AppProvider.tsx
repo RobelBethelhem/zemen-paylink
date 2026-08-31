@@ -130,6 +130,20 @@ type State = {
   activeMerchantId: string;
 };
 
+/**
+ * Screens that stand on their own without a session, and so must not be
+ * navigated away from when one ends. Everything else belongs to a signed-in
+ * operator and is sent back to the sign-in page.
+ */
+const SIGNED_OUT_VIEWS = new Set<View>([
+  "login",
+  "register",
+  "forgot-password",
+  "activate",
+  "otp",
+  "pay",
+]);
+
 const initialState: State = {
   view: "login",
   role: "merchant",
@@ -278,7 +292,13 @@ function useAppValue() {
 
   // When a real operator is signed in, their screens read the API instead of
   // the demo dataset. Other roles keep the prototype data for now.
-  const { session, signOut, signIn: sessionSignIn } = useSession();
+  const {
+    session,
+    signOut,
+    signIn: sessionSignIn,
+    signedOutReason,
+    clearSignedOutReason,
+  } = useSession();
   const live = session?.user.role === "sales";
   const operator = useOperatorData(!!live);
   const {
@@ -310,6 +330,9 @@ function useAppValue() {
   const [shareNotice, setShareNotice] = useState("");
   const [authError, setAuthError] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
+  // Set when signing in would end a session already running elsewhere. Holds
+  // the server's own wording, which says when that session was last used.
+  const [takeover, setTakeover] = useState<string | null>(null);
   // Self-registration. Kept here rather than in the screen so the sign-in form
   // can be prefilled with the username that was just created.
   const [reg, setReg] = useState({
@@ -363,6 +386,14 @@ function useAppValue() {
   useEffect(() => {
     if (!session) {
       routedFor.current = null;
+      // A session now ends on its own — left idle, out of time, or taken over
+      // by a sign-in elsewhere. Without this the operator is left looking at
+      // the screen they were on, where every action is already being refused.
+      setS((prev) =>
+        SIGNED_OUT_VIEWS.has(prev.view)
+          ? prev
+          : { ...prev, view: "login", password: "", sidebarOpen: false },
+      );
       return;
     }
     if (routedFor.current === session.user.id) return;
@@ -406,20 +437,30 @@ function useAppValue() {
 
   // Real authentication. An operator with no gateway credentials yet is sent
   // straight to the connect screen, because nothing else is usable until then.
-  const signInLive = async () => {
+  // An account may only be signed in once. When the server says it already is,
+  // we ask before ending that session rather than silently booting whoever is
+  // using it — they may be mid-payment, and it may not be the same person.
+  const attemptSignIn = async (force: boolean) => {
     setAuthError("");
+    setTakeover(null);
     setAuthBusy(true);
     try {
-      const next = await sessionSignIn(S.email.trim(), S.password);
+      const next = await sessionSignIn(S.email.trim(), S.password, force);
       const home: View = gateFor(next.requiresGateway, next.requiresRecovery, next.user.role);
       patch({ role: next.user.role, view: home, password: "", sidebarOpen: false });
       scrollTop();
     } catch (err) {
+      if (err instanceof ApiError && err.code === "session_active") {
+        setTakeover(err.message);
+        return;
+      }
       setAuthError(err instanceof ApiError ? err.message : "Could not sign in right now.");
     } finally {
       setAuthBusy(false);
     }
   };
+
+  const signInLive = () => attemptSignIn(false);
 
   // A signed-in operator creates a real link through the API; the gateway
   // credentials attached to their account are what will settle the payment.
@@ -578,6 +619,12 @@ function useAppValue() {
     goActivate: () => go("activate"),
     goOtp: () => go("otp"),
     signIn: () => void signInLive(),
+    confirmTakeover: () => void attemptSignIn(true),
+    cancelTakeover: () => {
+      setTakeover(null);
+      patch({ password: "" });
+    },
+    dismissSignedOut: clearSignedOutReason,
     verify: () => setRole(role),
     goPay: () => go("pay"),
     otpNext,
@@ -956,6 +1003,8 @@ function useAppValue() {
     liveLoading: operator.loading,
     authError,
     authBusy,
+    takeover,
+    signedOutReason,
     linkSummary: linkDetail?.summary ?? null,
     contributors: linkDetail?.contributors ?? [],
     splitInfo:

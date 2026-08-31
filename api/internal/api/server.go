@@ -72,7 +72,7 @@ func NewServer(
 	return &Server{
 		cfg:     cfg,
 		store:   st,
-		tokens:  auth.NewManager(cfg.JWTSecret, cfg.TokenTTL),
+		tokens:  auth.NewManager(cfg.JWTSecret, cfg.TokenTTL, cfg.SessionIdle),
 		sealer:  sealer,
 		gateway: mpgs.New(cfg.GatewayTimeout),
 		mail:    mail,

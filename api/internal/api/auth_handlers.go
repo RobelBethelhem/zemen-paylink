@@ -2,9 +2,11 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/zemenbank/paylink/api/internal/auth"
 	"github.com/zemenbank/paylink/api/internal/domain"
@@ -46,6 +48,13 @@ type sessionPayload struct {
 	// RequiresRecovery is true until the account can be recovered without an
 	// administrator. Setting it up afterwards is too late to be useful.
 	RequiresRecovery bool `json:"requiresRecovery"`
+
+	// The session policy, in seconds, so the browser ends the session at the
+	// same moment the server does instead of leaving a screen up whose next
+	// click will fail. The server remains the only enforcer; these let the
+	// client be honest about it rather than being trusted with it.
+	IdleSeconds     int `json:"idleSeconds"`
+	LifetimeSeconds int `json:"lifetimeSeconds"`
 }
 
 func initials(name string) string {
@@ -110,6 +119,22 @@ func (s *Server) sessionFor(u *domain.User, token, expiresAt string) sessionPayl
 		// Only the operator role transacts against MPGS directly.
 		RequiresGateway:  u.Role == domain.RoleSales && !connected,
 		RequiresRecovery: !hasRecovery,
+		IdleSeconds:      int(s.tokens.Idle().Seconds()),
+		LifetimeSeconds:  int(s.tokens.TTL().Seconds()),
+	}
+}
+
+// lastUsed says how long ago a session was used, in the terms a person would
+// use out loud. Rounded, because the exact second is noise to the reader and
+// tells anyone watching more than they need about the other session.
+func lastUsed(at time.Time) string {
+	switch d := time.Since(at); {
+	case d < 45*time.Second:
+		return "in use just now"
+	case d < 90*time.Second:
+		return "last used a minute ago"
+	default:
+		return fmt.Sprintf("last used %d minutes ago", int(d.Minutes()+0.5))
 	}
 }
 
@@ -119,6 +144,10 @@ type loginRequest struct {
 	Username string `json:"username"`
 	Email    string `json:"email"`
 	Password string `json:"password"`
+	// Force answers the "already signed in elsewhere" refusal: sign that
+	// session out and take the account over. Only ever acted on after the
+	// password has been proved, so it grants nothing a plain sign-in would not.
+	Force bool `json:"force,omitempty"`
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -186,6 +215,28 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	s.loginLimit.reset("user:" + account)
 	s.loginLimit.reset("ip:" + s.clientIP(r))
 
+	// One account, one session.
+	//
+	// Deliberately checked only once the password has been proved: asked any
+	// earlier it would tell an unauthenticated caller whether someone is
+	// currently signed in, which is a detail worth guessing at.
+	if lastSeen, active := s.tokens.ActiveSession(user.ID); active && !req.Force {
+		slog.Info("sign-in refused: account already signed in",
+			"user", user.ID, "remote", s.clientIP(r))
+		httpx.ErrorCode(w, http.StatusConflict, "session_active",
+			"This account is already signed in on another device or browser "+
+				"("+lastUsed(lastSeen)+"). Continuing here will sign that session out.")
+		return
+	}
+	if req.Force {
+		// They hold the password, so they may take the account back — from a
+		// browser they walked away from, or from someone who should not have it.
+		if n := s.tokens.RevokeUser(user.ID); n > 0 {
+			slog.Warn("existing session ended by a new sign-in",
+				"user", user.ID, "ended", n, "remote", s.clientIP(r))
+		}
+	}
+
 	token, expires, err := s.tokens.Issue(user)
 	if err != nil {
 		httpx.Error(w, http.StatusInternalServerError, "Could not start a session.")
@@ -227,7 +278,14 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	user, _ := auth.UserFrom(r.Context())
-	httpx.JSON(w, http.StatusOK, s.sessionFor(user, "", ""))
+	// The real deadline, not a blank. A page reload restores the session
+	// through here, and without it the browser would not know when this
+	// session's absolute limit falls due and would keep a dead screen up.
+	expiresAt := ""
+	if claims, ok := auth.ClaimsFrom(r.Context()); ok && claims.ExpiresAt != nil {
+		expiresAt = claims.ExpiresAt.UTC().Format("2006-01-02T15:04:05Z")
+	}
+	httpx.JSON(w, http.StatusOK, s.sessionFor(user, "", expiresAt))
 }
 
 // handleInviteLookup lets the activation screen show who the invite is for

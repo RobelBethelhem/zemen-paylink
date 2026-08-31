@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/url"
 	"os"
@@ -22,7 +23,16 @@ type Config struct {
 	// API passwords at rest. Both are required — there is no safe default.
 	JWTSecret     []byte
 	EncryptionKey []byte
-	TokenTTL      time.Duration
+
+	// How long a session may last, and how long it may sit untouched.
+	//
+	// TokenTTL is absolute: it runs from sign-in and is never extended, so a
+	// session ends fifteen minutes later however busy the operator has been.
+	// SessionIdle ends one sooner if nothing is done with it. Both are checked
+	// on every request, and both are published to the browser so it can sign
+	// out at the same moment rather than leaving a dead screen up.
+	TokenTTL    time.Duration
+	SessionIdle time.Duration
 
 	// PublicBaseURL is where customers open pay links; it forms the shareable
 	// URL and the gateway return URL, so it must be reachable by the payer.
@@ -96,6 +106,27 @@ func LoadDotEnv(path string) error {
 		}
 	}
 	return sc.Err()
+}
+
+// duration reads a Go duration such as "15m" or "90s".
+//
+// An unreadable or non-positive value falls back to the default rather than
+// failing to boot: these govern how soon someone is signed out, and a typo in
+// an env file should not take the portal down — but it is logged, because
+// silently running a different session policy than the one configured is its
+// own kind of wrong.
+func duration(key string, fallback time.Duration) time.Duration {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	parsed, err := time.ParseDuration(raw)
+	if err != nil || parsed <= 0 {
+		slog.Warn("ignoring unusable duration; using the default",
+			"key", key, "value", raw, "default", fallback)
+		return fallback
+	}
+	return parsed
 }
 
 func env(key, fallback string) string {
@@ -226,7 +257,8 @@ func Load() (*Config, error) {
 		Addr: listenAddr(),
 		Database: env("PAYLINK_DATABASE",
 			"paylink:paylink@tcp(127.0.0.1:3306)/paylink?parseTime=false"),
-		TokenTTL:           12 * time.Hour,
+		TokenTTL:           duration("PAYLINK_SESSION_TTL", 15*time.Minute),
+		SessionIdle:        duration("PAYLINK_SESSION_IDLE", 3*time.Minute),
 		PublicBaseURL:      env("PAYLINK_PUBLIC_BASE_URL", "http://localhost:3000"),
 		CORSOrigins:        splitList(env("PAYLINK_CORS_ORIGINS", "http://localhost:3000,http://localhost:3100")),
 		DefaultGatewayHost: env("PAYLINK_GATEWAY_HOST", "test-gateway.mastercard.com"),

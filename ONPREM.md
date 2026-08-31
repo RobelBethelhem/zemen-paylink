@@ -120,6 +120,33 @@ Push that through group policy, or import it on each device.
 4. Have an operator register against that number, then connect their gateway
 5. Create a link, pay it with a test card, refund it, open the receipt
 
+## Sessions
+
+Three rules, all enforced by the API on every request and mirrored in the
+browser so nobody is left on a screen that has already stopped working:
+
+| Rule | Default | Setting |
+|---|---|---|
+| Absolute lifetime, never extended | 15 minutes | `PAYLINK_SESSION_TTL` |
+| Signed out when left untouched | 3 minutes | `PAYLINK_SESSION_IDLE` |
+| One session per account | always | — |
+
+The lifetime runs from signing in and is not refreshed by use: fifteen minutes
+of continuous work still ends in signing in again. Thirty seconds before an
+idle sign-out the page offers to stay signed in.
+
+Only deliberate input counts as activity — a click, a key, a scroll. Mouse
+movement does not, and that is on purpose: it fires on its own often enough
+that counting it would hold an unattended machine signed in indefinitely,
+which is the exact situation the idle timeout exists to close.
+
+Signing in while the account is already signed in elsewhere is refused, with
+the offer to end that session and continue. Taking it over signs the other
+device out immediately.
+
+Both windows can be shortened freely. Lengthening them is a decision worth
+recording — they are what limits the value of a screen left unlocked.
+
 ## Sharing a host with other stacks
 
 This compose project is named `paylink`, so its containers, network and volumes

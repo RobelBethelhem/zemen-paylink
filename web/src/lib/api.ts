@@ -47,6 +47,15 @@ export type Session = {
   requiresRecovery: boolean;
   /** The gateway this session's screens are scoped to. */
   environment: Environment;
+
+  /**
+   * The session policy, in seconds, as the server enforces it: how long this
+   * session may sit untouched, and how long it may last at all. The browser
+   * signs out on the same limits so nobody is left on a screen whose next
+   * click will fail — the server is still the one enforcing them.
+   */
+  idleSeconds: number;
+  lifetimeSeconds: number;
 };
 
 /** Which Mastercard gateway a profile, link or payment belongs to. */
@@ -416,6 +425,24 @@ async function attempt<T>(
   return { ok: true, value: payload as T };
 }
 
+/**
+ * Notified when the server refuses a credentialled call outright.
+ *
+ * The session provider registers here so a session ended elsewhere — its time
+ * up, or taken over by a sign-in on another device — closes the portal once,
+ * in one place, instead of every caller having to notice a 401 for itself.
+ */
+let unauthorizedHandler: (() => void) | null = null;
+
+export function onUnauthorized(handler: (() => void) | null) {
+  unauthorizedHandler = handler;
+}
+
+function noteRejection(error: ApiError, options: RequestOptions) {
+  // A failed sign-in is a 401 too, and it must not be read as a session ending.
+  if (error.status === 401 && !options.anonymous) unauthorizedHandler?.();
+}
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const first = await attempt<T>(path, options, false);
   if (first.ok) return first.value;
@@ -423,8 +450,10 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   if (first.error.code && CHANNEL_GONE.has(first.error.code)) {
     const retried = await attempt<T>(path, options, true);
     if (retried.ok) return retried.value;
+    noteRejection(retried.error, options);
     throw retried.error;
   }
+  noteRejection(first.error, options);
   throw first.error;
 }
 
@@ -569,10 +598,15 @@ export type ShareResult = {
 };
 
 export const api = {
-  login: (username: string, password: string) =>
+  /**
+   * force answers a `session_active` refusal: sign the other session out and
+   * take the account over. The server only acts on it once the password has
+   * been proved, so it grants nothing an ordinary sign-in would not.
+   */
+  login: (username: string, password: string, force = false) =>
     request<Session>("/api/v1/auth/login", {
       method: "POST",
-      body: { username, password },
+      body: force ? { username, password, force } : { username, password },
       anonymous: true,
     }),
 
