@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -150,6 +151,31 @@ func (s *Server) handleCreateLink(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// merchant_id is a foreign key into merchants, so a link cannot be stored
+	// at all for an account that has none. Repair it from the number they
+	// registered against, and if even that is missing say so plainly — this
+	// used to reach MySQL and come back as an unexplained 500.
+	merchantID := user.MerchantID
+	if merchantID == "" && user.MPGSMerchantNumber != "" {
+		name := user.MPGSMerchantNumber
+		if m, err := s.store.MPGSMerchantByNumber(user.MPGSMerchantNumber); err == nil {
+			name = m.Name
+		}
+		if err := s.store.EnsureMerchant(user.MPGSMerchantNumber, name); err != nil {
+			slog.Error("could not prepare merchant for link", "user", user.ID, "error", err)
+		} else if err := s.store.SetUserMerchant(user.ID, user.MPGSMerchantNumber); err != nil {
+			slog.Error("could not attach user to merchant", "user", user.ID, "error", err)
+		} else {
+			merchantID = user.MPGSMerchantNumber
+		}
+	}
+	if merchantID == "" {
+		httpx.ErrorCode(w, http.StatusConflict, "merchant_required",
+			"Your account is not attached to a registered merchant. "+
+				"Ask merchant management to register your merchant number, then sign in again.")
+		return
+	}
+
 	title := strings.TrimSpace(req.Title)
 	if title == "" {
 		httpx.Error(w, http.StatusBadRequest, "Give the payment link a title so your customer knows what it is for.")
@@ -187,7 +213,7 @@ func (s *Server) handleCreateLink(w http.ResponseWriter, r *http.Request) {
 	}
 
 	link := &domain.PayLink{
-		MerchantID:  user.MerchantID,
+		MerchantID:  merchantID,
 		CreatedByID: user.ID,
 		BranchID:    strings.TrimSpace(req.BranchID),
 		Title:       title,

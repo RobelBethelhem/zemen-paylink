@@ -168,6 +168,10 @@ func Backfill(st *store.Store, env, bootstrapPassword string) error {
 	if err := backfillMerchantNumbers(st); err != nil {
 		return err
 	}
+	// After the numbers, because this derives merchant rows from them.
+	if err := backfillMerchantIdentities(st); err != nil {
+		return err
+	}
 	return warnOnDemoAccounts(st, env)
 }
 
@@ -235,6 +239,63 @@ func ensureManagementAccount(st *store.Store, env, bootstrapPassword string) err
 			"username", user.Username, "password", password)
 	} else {
 		slog.Info("created merchant management account", "username", user.Username)
+	}
+	return nil
+}
+
+// backfillMerchantIdentities repairs a deployment where the merchant register
+// and the merchants table were allowed to drift apart.
+//
+// pay_links.merchant_id and payments.merchant_id are foreign keys into
+// merchants, but outside development the only table anything wrote to was
+// mpgs_merchants. Operators therefore existed with no merchant row to point
+// at, and every payment link they tried to create was rejected by MySQL with a
+// foreign key error that surfaced as a bare 500.
+//
+// Idempotent and cheap, so it runs on every boot and only touches what is
+// missing — an existing deployment repairs itself on the next restart rather
+// than needing its merchants and operators registered again.
+func backfillMerchantIdentities(st *store.Store) error {
+	registered, err := st.MPGSMerchants()
+	if err != nil {
+		return fmt.Errorf("seed: list registered merchants: %w", err)
+	}
+	names := make(map[string]string, len(registered))
+	for _, m := range registered {
+		names[m.Number] = m.Name
+		if err := st.EnsureMerchant(m.Number, m.Name); err != nil {
+			return fmt.Errorf("seed: merchant row for %s: %w", m.Number, err)
+		}
+	}
+
+	repaired := 0
+	for _, role := range []domain.Role{
+		domain.RoleSales, domain.RoleMerchant, domain.RoleAdmin, domain.RoleMerchantManagement,
+	} {
+		users, err := st.UsersByRole(role)
+		if err != nil {
+			return fmt.Errorf("seed: list %s accounts: %w", role, err)
+		}
+		for _, u := range users {
+			if u.MerchantID != "" || u.MPGSMerchantNumber == "" {
+				continue
+			}
+			// Only mint a row for a number the register does not know about;
+			// the loop above already created the rest with their proper trading
+			// names, and passing the number as a name here would overwrite one.
+			if _, known := names[u.MPGSMerchantNumber]; !known {
+				if err := st.EnsureMerchant(u.MPGSMerchantNumber, u.MPGSMerchantNumber); err != nil {
+					return fmt.Errorf("seed: merchant row for %s: %w", u.ID, err)
+				}
+			}
+			if err := st.SetUserMerchant(u.ID, u.MPGSMerchantNumber); err != nil {
+				return fmt.Errorf("seed: attach %s to their merchant: %w", u.ID, err)
+			}
+			repaired++
+		}
+	}
+	if repaired > 0 {
+		slog.Info("attached accounts to their merchant", "count", repaired)
 	}
 	return nil
 }

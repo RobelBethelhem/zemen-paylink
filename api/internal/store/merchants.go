@@ -3,10 +3,40 @@ package store
 import (
 	"database/sql"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/zemenbank/paylink/api/internal/domain"
 )
+
+// EnsureMerchant makes the merchant table agree with the MPGS register.
+//
+// pay_links.merchant_id and payments.merchant_id are foreign keys into
+// merchants, but the number an operator actually trades under is recorded in
+// mpgs_merchants — a different table, filled by a different screen. Outside
+// development nothing ever writes to merchants, so every link an operator
+// created referenced a merchant row that did not exist and MySQL refused the
+// insert with error 1452.
+//
+// The MPGS merchant number is the identity: one number, one merchant row, the
+// same string on both sides. Idempotent, so registering a merchant twice or
+// renaming one both land correctly.
+func (s *Store) EnsureMerchant(id, name string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return fmt.Errorf("store: a merchant id is required")
+	}
+	if name = strings.TrimSpace(name); name == "" {
+		name = id
+	}
+	_, err := s.db.Exec(`
+		INSERT INTO merchants (id, name, category, status, contact_email, default_currency, created_at)
+		VALUES (?,?,'','Active','','USD',?)
+		ON DUPLICATE KEY UPDATE name = VALUES(name)`,
+		id, name, fmtTime(time.Now().UTC()))
+	return err
+}
 
 func (s *Store) CreateMerchant(m *domain.Merchant) error {
 	if m.ID == "" {

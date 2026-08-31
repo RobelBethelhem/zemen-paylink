@@ -125,9 +125,24 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		fullName = username
 	}
 
+	// An operator registered before this merchant had a row — or against a
+	// register entry written by an older build — would otherwise be created
+	// with no merchant at all, and could never issue a link.
+	if err := s.store.EnsureMerchant(merchant.Number, merchant.Name); err != nil {
+		slog.Error("could not prepare merchant for operator",
+			"number", merchant.Number, "error", err)
+		httpx.Error(w, http.StatusInternalServerError, "Could not complete registration.")
+		return
+	}
+
 	user := &domain.User{
-		Username:           username,
-		FullName:           fullName,
+		Username: username,
+		FullName: fullName,
+		// Both, and deliberately the same string: MerchantID is the foreign key
+		// every link and payment hangs from, MPGSMerchantNumber is what the
+		// gateway is addressed with. Setting only the second is what made link
+		// creation fail with a 500.
+		MerchantID:         merchant.Number,
 		MPGSMerchantNumber: merchant.Number,
 		Role:               domain.RoleSales,
 		Title:              "Sales agent",
@@ -223,6 +238,15 @@ func (s *Server) handleCreateMPGSMerchant(w http.ResponseWriter, r *http.Request
 		LiveNumber: strings.TrimSpace(req.LiveNumber),
 		CreatedBy:  user.ID,
 	}); err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "Could not save this merchant.")
+		return
+	}
+	// Payment links and payments are keyed to a merchant row by foreign key, so
+	// the register is only half-written until that row exists. Without it an
+	// operator registers happily and every link they create fails.
+	if err := s.store.EnsureMerchant(number, name); err != nil {
+		slog.Error("could not mirror merchant into the merchant table",
+			"number", number, "error", err)
 		httpx.Error(w, http.StatusInternalServerError, "Could not save this merchant.")
 		return
 	}

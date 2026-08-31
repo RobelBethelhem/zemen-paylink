@@ -176,3 +176,13 @@ func (s *Store) SetUserMerchantNumber(id, number string) error {
 		`UPDATE users SET mpgs_merchant_number = ? WHERE id = ?`, strings.TrimSpace(number), id)
 	return err
 }
+
+// SetUserMerchant records which merchant row an operator's work belongs to.
+// Written as NULL rather than '' when empty: merchant_id is a foreign key, and
+// no merchant is ever called the empty string.
+func (s *Store) SetUserMerchant(id, merchantID string) error {
+	_, err := s.db.Exec(
+		`UPDATE users SET merchant_id = ? WHERE id = ?`,
+		nullString(strings.TrimSpace(merchantID)), id)
+	return err
+}
