@@ -175,6 +175,59 @@ const initialState: State = {
   activeMerchantId: "MER-1042",
 };
 
+// ------------------------------------------------------- create-link form
+
+/**
+ * The create-link form, blank.
+ *
+ * Opening the form used to set only the wizard step and the type, leaving the
+ * title, amount, reference, expiry and scan limit from the last link still in
+ * their boxes — so the second link an operator made started as a half-filled
+ * copy of the first.
+ *
+ * Derived from initialState rather than restated, so a field added to the form
+ * with an initial value is cleared here automatically instead of being
+ * forgotten.
+ *
+ * currency is deliberately not reset. It is a setting rather than something
+ * typed for one link, and an operator who works in ETB should not have to
+ * choose it every time — forgetting once would price a link in the wrong
+ * currency, which is a worse failure than a dropdown that remembers.
+ */
+const BLANK_LINK_FORM = {
+  wizardStep: initialState.wizardStep,
+  linkType: initialState.linkType,
+  paymentMode: initialState.paymentMode,
+  amount: initialState.amount,
+  title: initialState.title,
+  reference: initialState.reference,
+  maxScans: initialState.maxScans,
+  expiry: initialState.expiry,
+  oneTime: initialState.oneTime,
+  dynMin: initialState.dynMin,
+  dynMax: initialState.dynMax,
+  splitTarget: initialState.splitTarget,
+} satisfies Partial<State>;
+
+/**
+ * The amount fields that do not belong to a link type.
+ *
+ * This mirrors the branching in the API's create handler exactly — static
+ * reads amount, dynamic reads min and max, split reads target and min — so a
+ * value the server would ignore is not left sitting on screen where it reads
+ * as part of the link being built.
+ */
+function staleAmounts(type: State["linkType"]): Partial<State> {
+  switch (type) {
+    case "static":
+      return { dynMin: "", dynMax: "", splitTarget: "" };
+    case "dynamic":
+      return { amount: "", splitTarget: "" };
+    case "split":
+      return { amount: "", dynMax: "" };
+  }
+}
+
 // ------------------------------------------------------------ style helpers
 
 const lseg = (active: boolean): CSSProperties =>
@@ -237,6 +290,23 @@ function useAppValue() {
   const [linkDetail, setLinkDetail] = useState<LinkDetailResponse | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [createError, setCreateError] = useState("");
+
+  // Every route into the create-link form goes through here, so a new link can
+  // never open showing the previous one's values.
+  const startNewLink = (view: View) => {
+    setCreateError("");
+    patch(BLANK_LINK_FORM);
+    go(view);
+  };
+
+  // Changing the type discards the amounts belonging to the type being left.
+  // Without this, switching static -> dynamic kept the fixed amount, and
+  // switching back showed a figure the operator had already abandoned.
+  const selectLinkType = (linkType: State["linkType"]) => {
+    setCreateError("");
+    patch({ linkType, ...staleAmounts(linkType) });
+  };
+
   const [shareNotice, setShareNotice] = useState("");
   const [authError, setAuthError] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
@@ -569,10 +639,7 @@ function useAppValue() {
     adminSettings: () => go("admin-settings"),
     adminCreateMerchant: () => go("admin-create-merchant"),
     merchDash: () => go("merchant-dashboard"),
-    merchCreate: () => {
-      patch({ wizardStep: 1, linkType: "static" });
-      go("merchant-create-link");
-    },
+    merchCreate: () => startNewLink("merchant-create-link"),
     merchLinks: () => go("merchant-links"),
     merchTxns: () => go("merchant-transactions"),
     merchBranches: () => go("merchant-branches"),
@@ -595,16 +662,13 @@ function useAppValue() {
       go("merchant-sales");
     },
     salesDash: () => go("sales-dashboard"),
-    salesCreate: () => {
-      patch({ wizardStep: 1, linkType: "static" });
-      go("sales-create-link");
-    },
+    salesCreate: () => startNewLink("sales-create-link"),
     salesLinks: () => go("sales-links"),
     salesTxns: () => go("sales-transactions"),
     // wizard
-    typeStatic: () => patch({ linkType: "static" }),
-    typeDynamic: () => patch({ linkType: "dynamic" }),
-    typeSplit: () => patch({ linkType: "split" }),
+    typeStatic: () => selectLinkType("static"),
+    typeDynamic: () => selectLinkType("dynamic"),
+    typeSplit: () => selectLinkType("split"),
     modeCharge: () => patch({ paymentMode: "purchase" }),
     modeReserve: () => patch({ paymentMode: "authorize" }),
     wizNext: () =>
@@ -624,10 +688,8 @@ function useAppValue() {
     generate,
     copy,
     toggleOneTime: () => patch({ oneTime: !S.oneTime }),
-    createLink: () => {
-      patch({ wizardStep: 1, linkType: "static" });
-      go(role === "sales" ? "sales-create-link" : "merchant-create-link");
-    },
+    createLink: () =>
+      startNewLink(role === "sales" ? "sales-create-link" : "merchant-create-link"),
     payVarCard: () => patch({ payVariant: "card" }),
     payVarMin: () => patch({ payVariant: "minimal" }),
     payBack: () => patch({ redirecting: false }),
