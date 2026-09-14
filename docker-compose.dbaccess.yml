@@ -1,0 +1,20 @@
+# Optional: lets a database client on another machine reach MySQL, through an
+# SSH tunnel and nothing else.
+#
+#   docker compose -f docker-compose.prod.yml -f docker-compose.dbaccess.yml up -d db
+#
+# To close it again:
+#
+#   docker compose -f docker-compose.prod.yml up -d db
+#
+# The bind address is the whole point. "127.0.0.1:3306:3306" publishes the port
+# on the server's loopback only: reachable from the server itself, and from an
+# SSH session forwarding to it, and from nowhere on the network.
+#
+# Writing "3306:3306" instead would publish it on every interface and put the
+# payment database in front of every machine on the bank LAN, protected by one
+# password and nothing else. Do not.
+services:
+  db:
+    ports:
+      - "127.0.0.1:3306:3306"

@@ -157,6 +157,48 @@ never collide with anything else on the box. Two rules keep it that way:
 - **Never run `docker system prune`** on a shared host. It removes other
   stacks' unused images and volumes too.
 
+## Looking at the data from another machine
+
+MySQL is not published. Nothing outside the compose network can reach it, and
+that is worth keeping — it is the payment record.
+
+To browse it in a GUI client, tunnel to it over SSH rather than opening the
+port to the LAN:
+
+```bash
+# on the server — publishes 3306 on its own loopback, not on the network
+docker compose -f docker-compose.prod.yml -f docker-compose.dbaccess.yml up -d db
+
+# creates a read-only account and prints the connection details
+bash scripts/db-viewer.sh
+```
+
+Then from your PC:
+
+```bash
+ssh -N -L 3307:127.0.0.1:3306 user@10.1.2.136
+```
+
+and point DBeaver, MySQL Workbench or HeidiSQL at `127.0.0.1:3307`, database
+`paylink`, using the read-only account the script issued. All three can open
+the tunnel themselves instead, which saves leaving a terminal running.
+
+When you are done, close it again:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d db
+```
+
+**Use the read-only account, not root.** Browsing live payments in a grid
+editor with an account that can write is one mis-click from altering a row
+nobody can reconstruct — and a payment that quietly changed is worse than one
+that is missing, because nothing looks wrong afterwards.
+
+**Do not publish 3306 to the network.** `"3306:3306"` instead of
+`"127.0.0.1:3306:3306"` puts the payment database in front of every machine in
+the bank with one password between them and it. The tunnel costs one extra
+command and needs an SSH account to get through.
+
 ## Backups
 
 Nothing else backs up your data.
