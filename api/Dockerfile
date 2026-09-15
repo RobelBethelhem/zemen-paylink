@@ -24,10 +24,18 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
       -trimpath -ldflags="-s -w" \
       -o /out/paylink ./cmd/server
 
+# The administration tool ships alongside the server so it runs inside the
+# container that already has the database and the encryption key configured.
+# There is no shell on the runtime image to fetch it with later.
+RUN CGO_ENABLED=0 GOOS=linux go build \
+      -trimpath -ldflags="-s -w" \
+      -o /out/paylinkadm ./cmd/paylinkadm
+
 # distroless/static carries CA certificates, which the gateway calls need, and
 # runs as a non-root user by default.
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/paylink /paylink
+COPY --from=build /out/paylinkadm /paylinkadm
 USER nonroot:nonroot
 EXPOSE 8080
 ENTRYPOINT ["/paylink"]

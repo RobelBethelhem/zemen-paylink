@@ -41,6 +41,8 @@ func (s *Store) CreateUser(u *domain.User) error {
 			prefix, base, span = "AD", 10, 90
 		case domain.RoleMerchantManagement:
 			prefix, base, span = "MM", 10, 90
+		case domain.RoleIntegrator:
+			prefix, base, span = "IN", 10, 90
 		}
 		id, err := s.uniqueID("users", prefix, base, span)
 		if err != nil {

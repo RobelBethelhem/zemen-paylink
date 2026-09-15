@@ -375,3 +375,33 @@ func (s *Store) Payments(f PaymentFilter) ([]*domain.Payment, error) {
 	}
 	return out, rows.Err()
 }
+
+// PaymentsForIntegration lists what an integration has actually taken.
+//
+// Joined through the link rather than filtered on the payment, because a
+// payment belongs to a link and only the link knows which system asked for it.
+// This is the evidence an administrator reviews before issuing live
+// credentials, so it must be the real traffic and not a self-reported figure.
+func (s *Store) PaymentsForIntegration(integrationID string, limit int) ([]*domain.Payment, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.db.Query(
+		`SELECT `+paymentColumns+` `+paymentJoins+`
+		 WHERE l.integration_id = ?
+		 ORDER BY p.created_at DESC LIMIT ?`, integrationID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []*domain.Payment{}
+	for rows.Next() {
+		p, err := scanPayment(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}

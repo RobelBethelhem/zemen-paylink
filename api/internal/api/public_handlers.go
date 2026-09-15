@@ -440,4 +440,9 @@ func (s *Server) applyOrderOutcome(payment *domain.Payment, link *domain.PayLink
 	if err := s.store.RecomputeLinkTotals(link.ID); err != nil {
 		slog.Error("could not update link totals", "link", link.ID, "error", err)
 	}
+	// Tell the system that asked for this link what became of it. Queued, not
+	// sent: the payer is already gone, and whether their platform happened to
+	// be reachable at this instant is not something to make anyone wait for.
+	// A no-op for a link created in the portal, which is most of them.
+	s.Notify(payment)
 }

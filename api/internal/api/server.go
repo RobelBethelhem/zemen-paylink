@@ -30,6 +30,11 @@ type Server struct {
 	// channels holds the sealed application-layer channels; every /api/v1 call
 	// but the handshake has to arrive on one.
 	channels *secure.Registry
+	// keys does the same job for server-to-server callers, who cannot perform
+	// the browser handshake and sign with a secret issued in advance instead.
+	keys *secure.KeyVerifier
+	// hooks delivers outbound notifications to integrators.
+	hooks *webhookDispatcher
 
 	// Guessing a password, a merchant number or an order id all have to be slow
 	// enough to be useless and loud enough to notice.
@@ -49,6 +54,10 @@ type Server struct {
 	linkLimit     *limiter
 	shareLimit    *limiter
 	checkoutLimit *limiter
+	// Per-key budget on the integration API. Generous, because a real
+	// integration makes a call per donation, and bounded, because a valid key
+	// should not be able to spend our CPU verifying signatures without limit.
+	integrationLimit *limiter
 
 	// Four wrong answers shut an account for fifteen minutes, then it opens on
 	// its own. Applied to whatever username was typed, whether or not it
@@ -69,7 +78,7 @@ func NewServer(
 	if err != nil {
 		return nil, err
 	}
-	return &Server{
+	srv := &Server{
 		cfg:     cfg,
 		store:   st,
 		tokens:  auth.NewManager(cfg.JWTSecret, cfg.TokenTTL, cfg.SessionIdle),
@@ -78,6 +87,7 @@ func NewServer(
 		mail:    mail,
 
 		channels: secure.NewRegistry(),
+		keys:     secure.NewKeyVerifier(),
 		// The per-account lockout is what stops someone guessing one password,
 		// so this budget only has to stop one address sweeping many accounts.
 		// Kept loose enough that a branch office behind one NAT address can all
@@ -98,12 +108,17 @@ func NewServer(
 		linkLimit:     newLimiter(60, time.Hour),
 		shareLimit:    newLimiter(30, time.Hour),
 		checkoutLimit: newLimiter(12, time.Minute),
+		// A donation platform at full tilt makes a call per donor; this is far
+		// above that and far below what would hurt us.
+		integrationLimit: newLimiter(600, time.Minute),
 
 		signInLock:   newLockout(MaxFailedAttempts, FailureWindow, LockoutDuration),
 		recoveryLock: newLockout(MaxFailedAttempts, FailureWindow, LockoutDuration),
 
 		trustedProxies: proxies,
-	}, nil
+	}
+	srv.hooks = newWebhookDispatcher(srv)
+	return srv, nil
 }
 
 func (s *Server) Handler() http.Handler {
@@ -185,6 +200,40 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/public/payments/{orderId}", s.handlePublicPaymentStatus)
 	// The payer's proof of payment. Keyed on the order id they already hold.
 	mux.HandleFunc("GET /api/v1/public/receipts/{orderId}", s.handlePublicReceipt)
+
+	// The server-to-server API, for systems that create links programmatically.
+	//
+	// Mounted behind its own middleware rather than the browser channel: an
+	// integration has no browser to perform an ECDH handshake with, so it signs
+	// with a secret issued in advance. It is no less sealed for that — the same
+	// signature, envelope and replay window apply, and an unsealed call is
+	// refused here exactly as it is there.
+	integrationAPI := http.NewServeMux()
+	integrationAPI.HandleFunc("GET /api/v1/integration/ping", s.handleAPIPing)
+	integrationAPI.HandleFunc("POST /api/v1/integration/links", s.handleAPICreateLink)
+	integrationAPI.HandleFunc("GET /api/v1/integration/links/{id}", s.handleAPIGetLink)
+	integrationAPI.HandleFunc("GET /api/v1/integration/payments/{orderId}", s.handleAPIGetPayment)
+	mux.Handle(integrationPrefix, s.integrationChannel(integrationAPI))
+
+	// Managing an integration happens in the portal, on an ordinary session.
+	mux.Handle("GET /api/v1/integrations",
+		s.authenticated(s.integratorOnly(http.HandlerFunc(s.handleListIntegrations))))
+	mux.Handle("POST /api/v1/integrations",
+		s.authenticated(s.integratorOnly(http.HandlerFunc(s.handleCreateIntegration))))
+	mux.Handle("PUT /api/v1/integrations/{id}/endpoints",
+		s.authenticated(s.integratorOnly(http.HandlerFunc(s.handleUpdateEndpoints))))
+	mux.Handle("POST /api/v1/integrations/{id}/rotate",
+		s.authenticated(s.integratorOnly(http.HandlerFunc(s.handleRotateSecrets))))
+	mux.Handle("POST /api/v1/integrations/{id}/go-live",
+		s.authenticated(s.integratorOnly(http.HandlerFunc(s.handleRequestLive))))
+	mux.Handle("GET /api/v1/integrations/{id}/deliveries",
+		s.authenticated(s.integratorOnly(http.HandlerFunc(s.handleListDeliveries))))
+
+	// The bank administrator who decides whether an integration goes live.
+	mux.Handle("GET /api/v1/admin/live-requests",
+		s.authenticated(s.requireRole(domain.RoleAdmin)(http.HandlerFunc(s.handleListLiveRequests))))
+	mux.Handle("POST /api/v1/admin/live-requests/{id}",
+		s.authenticated(s.requireRole(domain.RoleAdmin)(http.HandlerFunc(s.handleReviewLiveRequest))))
 
 	// Outermost first: a panic is caught, the response is labelled, the caller
 	// is throttled, CORS is settled, and only then is the sealed channel opened

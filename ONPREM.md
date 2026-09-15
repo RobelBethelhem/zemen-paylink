@@ -157,6 +157,38 @@ never collide with anything else on the box. Two rules keep it that way:
 - **Never run `docker system prune`** on a shared host. It removes other
   stacks' unused images and volumes too.
 
+## Letting another system create links
+
+A third-party system — a fundraising platform, a billing system — can create
+payment links through the API instead of anyone opening the portal.
+
+The full guide, which is what you hand the integrator, is **[INTEGRATION.md](INTEGRATION.md)**.
+The short version of what happens on this server:
+
+```bash
+cd /opt/paylink
+
+# an integrator account, against a merchant already in the register
+docker compose -f docker-compose.prod.yml exec api /paylinkadm integrator \
+  -username zcare -merchant 600123456789 -name "Z-Care Platform"
+
+# their test integration and its credentials, shown once
+docker compose -f docker-compose.prod.yml exec api /paylinkadm integration \
+  -username zcare -name "Z-Care" -webhook https://z-care.et/hooks/paylink
+
+docker compose -f docker-compose.prod.yml exec api /paylinkadm list
+```
+
+Between those two steps the integrator signs in once, sets recovery questions,
+and connects the MPGS gateway their links will settle against — without it,
+link creation is refused, because there would be no gateway to take the money.
+
+**Test credentials only.** Live ones are the outcome of a review, never of a
+command: somebody looks at the merchant and at what its test traffic actually
+did, and only then does `approve-live` issue a live key. Asking to go live
+without a single test payment is refused, because there would be nothing to
+review.
+
 ## Looking at the data from another machine
 
 MySQL is not published. Nothing outside the compose network can reach it, and

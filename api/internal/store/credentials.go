@@ -171,6 +171,20 @@ func (s *Store) DeleteGatewayCredential(userID string, env domain.Environment) e
 	return err
 }
 
+// HasVerifiedCredentialFor reports whether one specific gateway is connected.
+//
+// The API needs this rather than the any-environment question: a test API key
+// must produce a test link even when its owner has since connected live and is
+// working in it, so "are they connected at all" is the wrong thing to ask.
+func (s *Store) HasVerifiedCredentialFor(userID string, env domain.Environment) (bool, error) {
+	var n int
+	err := s.db.QueryRow(`
+		SELECT COUNT(1) FROM gateway_credentials
+		WHERE user_id = ? AND environment = ? AND verified_at IS NOT NULL`,
+		userID, string(env)).Scan(&n)
+	return n > 0, err
+}
+
 // HasVerifiedCredential reports whether the operator may create payment links
 // at all — in any environment.
 func (s *Store) HasVerifiedCredential(userID string) (bool, error) {

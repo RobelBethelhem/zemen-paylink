@@ -69,6 +69,10 @@ func run() error {
 	defer stopReconciler()
 	srv.StartReconciler(reconcilerCtx, 2*time.Minute)
 
+	// Outbound notifications to integrated systems. Runs often, does nothing
+	// when the queue is empty, and survives a receiver being down.
+	srv.StartWebhookDelivery(reconcilerCtx, 20*time.Second)
+
 	httpServer := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           srv.Handler(),

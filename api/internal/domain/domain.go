@@ -13,11 +13,15 @@ const (
 	// name each one trades under. Operators register against that list, so it
 	// is what decides who a payment is shown as being paid to.
 	RoleMerchantManagement Role = "merchant_management"
+	// RoleIntegrator owns a system that creates links through the API rather
+	// than through the portal. They never take a payment by hand, so they see
+	// credentials, documentation and their own traffic, and nothing else.
+	RoleIntegrator Role = "integrator"
 )
 
 func (r Role) Valid() bool {
 	switch r {
-	case RoleAdmin, RoleMerchant, RoleSales, RoleMerchantManagement:
+	case RoleAdmin, RoleMerchant, RoleSales, RoleMerchantManagement, RoleIntegrator:
 		return true
 	}
 	return false
@@ -117,16 +121,23 @@ const (
 )
 
 type PayLink struct {
-	ID          string      `json:"id"`
-	Slug        string      `json:"slug"`
-	MerchantID  string      `json:"merchantId"`
-	CreatedByID string      `json:"createdById"`
-	BranchID    string      `json:"branchId,omitempty"`
-	Title       string      `json:"title"`
-	Description string      `json:"description,omitempty"`
-	Reference   string      `json:"reference,omitempty"`
-	Type        LinkType    `json:"type"`
-	PaymentMode PaymentMode `json:"paymentMode"`
+	ID          string `json:"id"`
+	Slug        string `json:"slug"`
+	MerchantID  string `json:"merchantId"`
+	CreatedByID string `json:"createdById"`
+	BranchID    string `json:"branchId,omitempty"`
+	// Set when this link was created through the API. It is what routes a
+	// payment made against it back to the system that asked for the link.
+	IntegrationID string `json:"integrationId,omitempty"`
+	// Where this link's payer is returned to afterwards. Empty for a link made
+	// in the portal, where the payer stays on our own receipt page.
+	CallbackSuccessURL string      `json:"-"`
+	CallbackFailureURL string      `json:"-"`
+	Title              string      `json:"title"`
+	Description        string      `json:"description,omitempty"`
+	Reference          string      `json:"reference,omitempty"`
+	Type               LinkType    `json:"type"`
+	PaymentMode        PaymentMode `json:"paymentMode"`
 	// Environment is fixed when the link is created, from the operator's mode at
 	// that moment. Every payment against it uses that gateway for the rest of
 	// its life, so going live never breaks links already in customers' hands.

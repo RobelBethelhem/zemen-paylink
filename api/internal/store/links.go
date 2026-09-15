@@ -3,12 +3,14 @@ package store
 import (
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/zemenbank/paylink/api/internal/domain"
 )
 
 const linkColumns = `l.id, l.slug, l.merchant_id, l.created_by_id, COALESCE(l.branch_id,''),
+	COALESCE(l.integration_id,''), l.callback_success_url, l.callback_failure_url,
 	l.title, l.description, l.reference, l.type, l.payment_mode, l.environment,
 	l.amount_minor, l.target_minor, l.currency,
 	l.min_minor, l.max_minor, l.max_uses, l.used_count, l.paid_count, l.paid_minor,
@@ -26,6 +28,7 @@ func scanLink(row interface{ Scan(...any) error }) (*domain.PayLink, error) {
 	var expiresAt sql.NullString
 	var createdAt string
 	err := row.Scan(&l.ID, &l.Slug, &l.MerchantID, &l.CreatedByID, &l.BranchID,
+		&l.IntegrationID, &l.CallbackSuccessURL, &l.CallbackFailureURL,
 		&l.Title, &l.Description, &l.Reference, &l.Type, &l.PaymentMode, &l.Environment,
 		&l.AmountMinor, &l.TargetMinor, &l.Currency,
 		&l.MinMinor, &l.MaxMinor, &maxUses, &l.UsedCount, &l.PaidCount, &l.PaidMinor,
@@ -78,12 +81,14 @@ func (s *Store) CreateLink(l *domain.PayLink) error {
 		l.Environment = domain.EnvTest
 	}
 	_, err := s.db.Exec(`
-		INSERT INTO pay_links (id, slug, merchant_id, created_by_id, branch_id, title,
+		INSERT INTO pay_links (id, slug, merchant_id, created_by_id, branch_id, integration_id,
+			title,
 			description, reference, type, payment_mode, environment, amount_minor, target_minor,
 			currency, min_minor, max_minor,
 			max_uses, used_count, paid_count, paid_minor, expires_at, status, created_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		l.ID, l.Slug, l.MerchantID, l.CreatedByID, nullString(l.BranchID), l.Title,
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		l.ID, l.Slug, l.MerchantID, l.CreatedByID, nullString(l.BranchID),
+		nullString(l.IntegrationID), l.Title,
 		l.Description, l.Reference, string(l.Type), string(l.PaymentMode), string(l.Environment),
 		l.AmountMinor, l.TargetMinor, l.Currency,
 		l.MinMinor, l.MaxMinor, maxUses, l.UsedCount, l.PaidCount, l.PaidMinor,
@@ -268,5 +273,16 @@ func (s *Store) CreateShare(sh *domain.LinkShare) error {
 		INSERT INTO link_shares (id, pay_link_id, channel, destination, shared_by_id, created_at)
 		VALUES (?,?,?,?,?,?)`,
 		sh.ID, sh.PayLinkID, string(sh.Channel), sh.Destination, sh.SharedByID, fmtTime(sh.CreatedAt))
+	return err
+}
+
+// SetLinkCallbacks records where this link's payer should be returned to.
+//
+// Stored per link rather than taken from the integration, because a platform
+// running many campaigns wants a donor sent back to the one they gave to.
+func (s *Store) SetLinkCallbacks(linkID, successURL, failureURL string) error {
+	_, err := s.db.Exec(
+		`UPDATE pay_links SET callback_success_url = ?, callback_failure_url = ? WHERE id = ?`,
+		strings.TrimSpace(successURL), strings.TrimSpace(failureURL), linkID)
 	return err
 }

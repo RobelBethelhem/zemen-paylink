@@ -118,6 +118,10 @@ CREATE TABLE IF NOT EXISTS pay_links (
   merchant_id   VARCHAR(64)  NOT NULL,
   created_by_id VARCHAR(64)  NOT NULL,
   branch_id     VARCHAR(64)  NULL,
+  -- Set when a link was created through the API rather than in the portal.
+  integration_id VARCHAR(64) NULL,
+  callback_success_url VARCHAR(512) NOT NULL DEFAULT '',
+  callback_failure_url VARCHAR(512) NOT NULL DEFAULT '',
   title         VARCHAR(255) NOT NULL,
   description   VARCHAR(512) NOT NULL DEFAULT '',
   reference     VARCHAR(255) NOT NULL DEFAULT '',
@@ -220,4 +224,107 @@ CREATE TABLE IF NOT EXISTS payment_operations (
   UNIQUE KEY uq_ops_txn (payment_id, transaction_id),
   CONSTRAINT fk_ops_payment FOREIGN KEY (payment_id)
     REFERENCES payments(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- ------------------------------------------------------------- integrations
+--
+-- A third-party system that creates payment links through the API instead of
+-- through the portal: a fundraising platform, a billing system, an ERP.
+--
+-- One row per environment. Test credentials are issued when the integrator
+-- registers; live credentials do not exist until a bank administrator has
+-- reviewed the merchant and its test activity. So the presence of a live row
+-- IS the approval, and there is no separate flag to fall out of step with it.
+CREATE TABLE IF NOT EXISTS integrations (
+  id                   VARCHAR(64)    NOT NULL PRIMARY KEY,
+  merchant_id          VARCHAR(64)    NOT NULL,
+  owner_id             VARCHAR(64)    NOT NULL,
+  name                 VARCHAR(160)   NOT NULL,
+  environment          VARCHAR(16)    NOT NULL DEFAULT 'test',
+  api_key              VARCHAR(80)    NOT NULL,
+  -- Sealed, not hashed. An HMAC signature can only be checked against the
+  -- secret itself, so unlike a password this one has to be recoverable. AES-GCM
+  -- under PAYLINK_ENCRYPTION_KEY, exactly as gateway passwords are: unreadable
+  -- in a database dump, readable to the process that must verify with it.
+  secret_sealed        VARBINARY(512) NOT NULL,
+  -- Last four characters, so a screen can identify a secret without showing it.
+  secret_hint          VARCHAR(16)    NOT NULL DEFAULT '',
+  -- The key both sides seal request and response bodies with.
+  payload_key_sealed   VARBINARY(512) NOT NULL,
+  -- Where the payer is returned to, and where we tell the integrator server to
+  -- server. The redirect can be lost (a closed tab, a dead phone); the webhook
+  -- is what makes delivery reliable, so the two are not alternatives.
+  callback_success_url VARCHAR(512)   NOT NULL DEFAULT '',
+  callback_failure_url VARCHAR(512)   NOT NULL DEFAULT '',
+  webhook_url          VARCHAR(512)   NOT NULL DEFAULT '',
+  status               VARCHAR(24)    NOT NULL DEFAULT 'active',
+  last_used_at         VARCHAR(40)    NULL,
+  created_at           VARCHAR(40)    NOT NULL,
+  updated_at           VARCHAR(40)    NOT NULL,
+  UNIQUE KEY uq_integrations_key (api_key),
+  UNIQUE KEY uq_integrations_name (owner_id, name, environment),
+  KEY idx_integrations_merchant (merchant_id),
+  CONSTRAINT fk_integrations_merchant FOREIGN KEY (merchant_id)
+    REFERENCES merchants(id) ON DELETE CASCADE,
+  CONSTRAINT fk_integrations_owner FOREIGN KEY (owner_id)
+    REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- The request to go live, and who reviewed it. Kept as its own record rather
+-- than a column so the decision has an author and a date attached to it.
+CREATE TABLE IF NOT EXISTS integration_live_requests (
+  id            VARCHAR(64)  NOT NULL PRIMARY KEY,
+  integration_id VARCHAR(64) NOT NULL,
+  merchant_id   VARCHAR(64)  NOT NULL,
+  requested_by  VARCHAR(64)  NOT NULL,
+  status        VARCHAR(16)  NOT NULL DEFAULT 'pending',
+  note          VARCHAR(512) NOT NULL DEFAULT '',
+  reviewed_by   VARCHAR(64)  NOT NULL DEFAULT '',
+  requested_at  VARCHAR(40)  NOT NULL,
+  reviewed_at   VARCHAR(40)  NULL,
+  KEY idx_live_requests_status (status, requested_at),
+  CONSTRAINT fk_live_requests_integration FOREIGN KEY (integration_id)
+    REFERENCES integrations(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Whatever the integrator needs carried alongside a link and handed back with
+-- every payment made against it: which campaign, which invoice, which donor.
+--
+-- Rows rather than a JSON blob, because the question that gets asked is "every
+-- payment for campaign 42", and that is an indexed lookup here and a table
+-- scan there.
+CREATE TABLE IF NOT EXISTS link_metadata (
+  pay_link_id VARCHAR(64)  NOT NULL,
+  meta_key    VARCHAR(64)  NOT NULL,
+  meta_value  VARCHAR(512) NOT NULL DEFAULT '',
+  PRIMARY KEY (pay_link_id, meta_key),
+  KEY idx_metadata_lookup (meta_key, meta_value),
+  CONSTRAINT fk_metadata_link FOREIGN KEY (pay_link_id)
+    REFERENCES pay_links(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- Outbound notifications, queued rather than sent inline.
+--
+-- A webhook that is attempted once, inside the request that triggered it, is
+-- lost the moment the integrator has a bad minute. Queuing makes delivery
+-- survive their downtime and ours, and keeps a record of what was told to whom.
+CREATE TABLE IF NOT EXISTS webhook_deliveries (
+  id              VARCHAR(64)  NOT NULL PRIMARY KEY,
+  integration_id  VARCHAR(64)  NOT NULL,
+  event           VARCHAR(48)  NOT NULL,
+  payment_id      VARCHAR(64)  NOT NULL DEFAULT '',
+  payload         TEXT         NOT NULL,
+  status          VARCHAR(16)  NOT NULL DEFAULT 'pending',
+  attempts        INT          NOT NULL DEFAULT 0,
+  next_attempt_at VARCHAR(40)  NOT NULL,
+  response_code   INT          NOT NULL DEFAULT 0,
+  last_error      VARCHAR(512) NOT NULL DEFAULT '',
+  created_at      VARCHAR(40)  NOT NULL,
+  delivered_at    VARCHAR(40)  NULL,
+  -- One delivery per event per payment: the guard against a reconciler run
+  -- telling an integrator twice that the same payment succeeded.
+  UNIQUE KEY uq_webhook_event (integration_id, event, payment_id),
+  KEY idx_webhook_due (status, next_attempt_at),
+  CONSTRAINT fk_webhook_integration FOREIGN KEY (integration_id)
+    REFERENCES integrations(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

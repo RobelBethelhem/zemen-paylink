@@ -73,7 +73,35 @@ func Open(dsn string) (*Store, error) {
 	if _, err := db.Exec(schema); err != nil {
 		return nil, fmt.Errorf("store: apply schema: %w", err)
 	}
-	return &Store{db: db}, nil
+	st := &Store{db: db}
+	if err := st.migrate(); err != nil {
+		return nil, err
+	}
+	return st, nil
+}
+
+// migrate brings a database created by an earlier version up to date.
+//
+// CREATE TABLE IF NOT EXISTS in schema.sql covers a new table, but it does
+// nothing at all to a table that already exists. A column added later has to be
+// applied here instead, where it reaches a database that is already carrying
+// data — which on a live deployment is every database that matters.
+func (s *Store) migrate() error {
+	// Which integration created a link, so a payment made against it can be
+	// reported back to the system that asked for it. NULL for anything made in
+	// the portal by hand, which is most links.
+	if err := s.ensureColumn("pay_links", "integration_id", "VARCHAR(64) NULL"); err != nil {
+		return err
+	}
+	// Where this link's payer is returned to. Per link rather than per
+	// integration because a fundraising platform wants a donor sent back to the
+	// campaign they gave to, not to one address for everything it runs.
+	if err := s.ensureColumn(
+		"pay_links", "callback_success_url", "VARCHAR(512) NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	return s.ensureColumn(
+		"pay_links", "callback_failure_url", "VARCHAR(512) NOT NULL DEFAULT ''")
 }
 
 func waitForDatabase(db *sql.DB, limit time.Duration) error {

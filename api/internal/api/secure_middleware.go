@@ -191,6 +191,15 @@ func (s *Server) channelRequired(r *http.Request) bool {
 	if !strings.HasPrefix(r.URL.Path, "/api/v1/") {
 		return false
 	}
+	// The server-to-server API is sealed too, but by its own middleware and
+	// with keys issued in advance — there is no browser behind it to perform
+	// an ECDH handshake or to hold WebCrypto. This is an exemption from *this*
+	// channel, not from being sealed: integrationChannel enforces the same
+	// signature, the same envelope and the same replay window, and refuses an
+	// unsealed call exactly as this does.
+	if strings.HasPrefix(r.URL.Path, integrationPrefix) {
+		return false
+	}
 	return r.URL.Path != "/api/v1/secure/handshake"
 }
 
