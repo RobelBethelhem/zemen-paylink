@@ -39,6 +39,7 @@ func main() {
 func usage() {
 	fmt.Fprint(os.Stderr, `paylinkadm — integration administration
 
+  admin         create a bank administrator, who reviews go-live requests
   integrator    create an integrator account against a registered merchant
   integration   issue a test integration and its credentials
   approve-live  create the live integration for an approved integrator
@@ -69,6 +70,8 @@ func open() (*store.Store, *secrets.Sealer, error) {
 
 func run(command string, args []string) error {
 	switch command {
+	case "admin":
+		return createAdmin(args)
 	case "integrator":
 		return createIntegrator(args)
 	case "integration":
@@ -83,6 +86,82 @@ func run(command string, args []string) error {
 		usage()
 		return fmt.Errorf("unknown command %q", command)
 	}
+}
+
+// createAdmin makes a bank administrator: the person who decides whether an
+// integration may touch real money.
+//
+// Attached to no merchant on purpose. An administrator reviews merchants and
+// must not belong to one of them.
+func createAdmin(args []string) error {
+	fs := flag.NewFlagSet("admin", flag.ExitOnError)
+	username := fs.String("username", "", "login name for the administrator")
+	fullName := fs.String("name", "", "who this account belongs to")
+	password := fs.String("password", "", "leave empty to generate one")
+	_ = fs.Parse(args)
+
+	if *username == "" {
+		return errors.New("-username is required")
+	}
+
+	st, _, err := open()
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+
+	taken, err := st.UsernameTaken(*username)
+	if err != nil {
+		return err
+	}
+	if taken {
+		return fmt.Errorf("the username %q is already in use", *username)
+	}
+
+	secret := *password
+	if secret == "" {
+		secret = store.NewToken()[:20]
+	}
+	if err := auth.ValidatePassword(secret, *username, ""); err != nil {
+		return fmt.Errorf("password: %w", err)
+	}
+	hash, err := auth.HashPassword(secret)
+	if err != nil {
+		return err
+	}
+
+	name := strings.TrimSpace(*fullName)
+	if name == "" {
+		name = *username
+	}
+	user := &domain.User{
+		Username:     *username,
+		FullName:     name,
+		Role:         domain.RoleAdmin,
+		Title:        "Bank administrator",
+		Status:       domain.UserActive,
+		PasswordHash: hash,
+	}
+	if err := st.CreateUser(user); err != nil {
+		return err
+	}
+
+	fmt.Printf(`
+Administrator account created.
+
+  Username   %s
+  Password   %s
+  User id    %s
+
+Sign in at the portal. The first screen asks for recovery questions — an
+administrator who loses their password cannot be recovered any other way.
+
+This account reviews go-live requests: it sees the merchant, the integration
+and what its test traffic actually did, and decides. It cannot create payment
+links or take money.
+
+`, user.Username, secret, user.ID)
+	return nil
 }
 
 func createIntegrator(args []string) error {

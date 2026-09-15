@@ -387,8 +387,16 @@ func (s *Server) handleDeleteCredentials(w http.ResponseWriter, r *http.Request)
 // means their figures read zero until real payments start, which is the right
 // way round — a rehearsal must never be reported to them as revenue.
 func (s *Server) environmentFor(user *domain.User) domain.Environment {
-	if user.Role != domain.RoleSales {
-		return domain.EnvLive
+	// The roles that hold gateway credentials are told which one they are
+	// actually working in. An integrator does: their links settle through the
+	// gateway they connected, and reporting them as live while they worked
+	// against the test one put a LIVE badge on a rehearsal — the single piece
+	// of the interface whose whole job is to say whether the money is real.
+	switch user.Role {
+	case domain.RoleSales, domain.RoleIntegrator:
+		return s.store.ActiveEnvironment(user.ID)
 	}
-	return s.store.ActiveEnvironment(user.ID)
+	// Everyone else holds no gateway at all, and sees real merchants rather
+	// than a rehearsal.
+	return domain.EnvLive
 }

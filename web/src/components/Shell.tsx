@@ -1,10 +1,11 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { s } from "@/lib/css";
 import { useApp } from "@/store/AppProvider";
 
 export function Shell({ children }: { children: React.ReactNode }) {
-  const { baseCurrency, isAdmin, isAdminDashboard, isAdminMerchants, isAdminSettings, isAdminTransactions, isMerchBranches, isMerchDashboard, isMerchLinks, isMerchSettings, isMerchTeam, isMerchTransactions, isMerchant, isSales, isSalesDashboard, isSalesLinks, isSalesTransactions, isTestMode, layoutSidebar, layoutTopnav, on, pageSub, pageTitle, roleLabel, sidebarOpen, user } = useApp();
+  const { baseCurrency, isAdmin, isLiveSession, isAdminLiveRequests, isIntegrator, isIntegrations, isDeveloperDocs, isAdminDashboard, isAdminMerchants, isAdminSettings, isAdminTransactions, isMerchBranches, isMerchDashboard, isMerchLinks, isMerchSettings, isMerchTeam, isMerchTransactions, isMerchant, isSales, isSalesDashboard, isSalesLinks, isSalesTransactions, isTestMode, layoutSidebar, layoutTopnav, on, pageSub, pageTitle, roleLabel, sidebarOpen, user } = useApp();
   return (
     <div style={s("min-height:100vh")}>
       {" "}
@@ -28,7 +29,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               </div>
             </div>
             <div data-anchor="nav" style={s("flex:1;display:flex;flex-direction:column;gap:3px;padding-top:6px")}>
-              {isAdmin && (
+              {isAdmin && !isLiveSession && (
                 <>
                   <button
                     className="zx1qvdbo"
@@ -456,6 +457,40 @@ export function Shell({ children }: { children: React.ReactNode }) {
                   </button>
                 </>
               )}
+              {isIntegrator && (
+                <>
+                  <NavItem active={isIntegrations} onClick={on.integrations} label="Integrations">
+                    <path d="M4 7h4M4 12h4M4 17h4" />
+                    <rect x="10" y="4" width="10" height="16" rx="2" />
+                    <path d="M14 9h2M14 13h2" />
+                  </NavItem>
+                  <NavItem active={isDeveloperDocs} onClick={on.developerDocs} label="Developer docs">
+                    <path d="M8 6 4 12l4 6" />
+                    <path d="m16 6 4 6-4 6" />
+                  </NavItem>
+                  <NavItem
+                    active={false}
+                    onClick={on.connectGateway}
+                    label="Gateway"
+                    badge={isTestMode ? "TEST" : "LIVE"}
+                    badgeTone={isTestMode}
+                  >
+                    <rect x="2" y="6" width="20" height="13" rx="2" />
+                    <path d="M2 10h20" />
+                    <path d="M6 15h4" />
+                  </NavItem>
+                </>
+              )}
+              {isAdmin && (
+                <NavItem
+                  active={isAdminLiveRequests}
+                  onClick={on.adminLiveRequests}
+                  label="Go-live requests"
+                >
+                  <path d="M9 12l2 2 4-4" />
+                  <circle cx="12" cy="12" r="9" />
+                </NavItem>
+              )}
             </div>
             <div style={s("border-top:1px solid rgba(255,255,255,.08);padding-top:12px;margin-top:8px")}>
               <button
@@ -834,5 +869,64 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <div data-anchor="screen" style={s("flex:1")}>{children}</div>
       </div>
     </div>
+  );
+}
+
+/**
+ * One sidebar entry.
+ *
+ * The existing items each restate forty lines of the same markup; this exists so
+ * the ones added since do not. children are the paths of a 24×24 stroke icon.
+ */
+function NavItem({
+  active,
+  onClick,
+  label,
+  badge,
+  badgeTone,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  badge?: string;
+  badgeTone?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      className="zx1qvdbo"
+      onClick={onClick}
+      style={s("position:relative;display:flex;align-items:center;width:100%;padding:11px 14px;border:none;background:transparent;color:#A8AAB2;font-size:14px;font-weight:500;border-radius:10px;cursor:pointer;text-align:left")}
+    >
+      {active && (
+        <>
+          <span style={s("position:absolute;inset:0;border-radius:10px;background:rgba(218,30,40,.14)")} />
+          <span style={s("position:absolute;left:0;top:9px;bottom:9px;width:3px;border-radius:0 3px 3px 0;background:#DA1E28")} />
+        </>
+      )}
+      <span style={s("position:relative;display:flex;align-items:center;gap:12px;width:100%")}>
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+          {children}
+        </svg>
+        <span>{label}</span>
+        {badge && (
+          <>
+            <span style={s("flex:1")} />
+            <span
+              style={s(
+                `font-size:10px;font-weight:700;letter-spacing:.06em;padding:2px 7px;border-radius:20px;${
+                  badgeTone
+                    ? "background:rgba(232,163,61,.18);color:#E8A33D"
+                    : "background:rgba(34,160,107,.18);color:#3ECF8E"
+                }`,
+              )}
+            >
+              {badge}
+            </span>
+          </>
+        )}
+      </span>
+    </button>
   );
 }

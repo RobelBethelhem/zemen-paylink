@@ -2,6 +2,7 @@
 
 import { useApp } from "@/store/AppProvider";
 import { AdminCreateMerchant } from "@/components/screens/AdminCreateMerchant";
+import { AdminLiveRequests } from "@/components/screens/AdminLiveRequests";
 import { AdminDashboard } from "@/components/screens/AdminDashboard";
 import { AdminMerchantDetail } from "@/components/screens/AdminMerchantDetail";
 import { AdminMerchants } from "@/components/screens/AdminMerchants";
@@ -11,6 +12,8 @@ import { Branches } from "@/components/screens/Branches";
 import { CreateBranch } from "@/components/screens/CreateBranch";
 import { CreateLink } from "@/components/screens/CreateLink";
 import { CreateTeam } from "@/components/screens/CreateTeam";
+import { DeveloperDocs } from "@/components/screens/DeveloperDocs";
+import { Integrations } from "@/components/screens/Integrations";
 import { LinkCreated } from "@/components/screens/LinkCreated";
 import { LinkDetail } from "@/components/screens/LinkDetail";
 import { LinksList } from "@/components/screens/LinksList";
@@ -40,6 +43,9 @@ export function Screens() {
     isBranchCreate,
     isTeamCreate,
     isSalesDashboard,
+    isIntegrations,
+    isDeveloperDocs,
+    isAdminLiveRequests,
   } = useApp();
 
   return (
@@ -61,6 +67,9 @@ export function Screens() {
       {isBranchCreate && <CreateBranch />}
       {isTeamCreate && <CreateTeam />}
       {isSalesDashboard && <SalesDashboard />}
+      {isIntegrations && <Integrations />}
+      {isDeveloperDocs && <DeveloperDocs />}
+      {isAdminLiveRequests && <AdminLiveRequests />}
     </>
   );
 }

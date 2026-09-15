@@ -39,7 +39,12 @@ type LinkDetailResponse = {
 import { useSession } from "@/store/SessionProvider";
 import { adaptLink, adaptPayment, badgeFor, useAnalytics, useOperatorData } from "@/store/live";
 
-export type Role = "admin" | "merchant" | "sales" | "merchant_management";
+export type Role =
+  | "admin"
+  | "merchant"
+  | "sales"
+  | "merchant_management"
+  | "integrator";
 
 export type View =
   | "login"
@@ -71,6 +76,9 @@ export type View =
   | "sales-dashboard"
   | "sales-create-link"
   | "sales-links"
+  | "integrations"
+  | "developer-docs"
+  | "admin-live-requests"
   | "sales-transactions";
 
 type NewLink = {
@@ -363,8 +371,21 @@ function useAppValue() {
 
   // The portal serves operators and merchant management. Admin and merchant
   // workspaces are not offered, so no role resolves to one of their screens.
-  const homeFor = (role: Role): View =>
-    role === "merchant_management" ? "merchant-register" : "sales-dashboard";
+  const homeFor = (role: Role): View => {
+    switch (role) {
+      case "merchant_management":
+        return "merchant-register";
+      // An integrator never takes a payment by hand; their workspace is the
+      // credentials they integrate with.
+      case "integrator":
+        return "integrations";
+      // An administrator's job here is the review queue.
+      case "admin":
+        return "admin-live-requests";
+      default:
+        return "sales-dashboard";
+    }
+  };
 
   // Setting up recovery after a password is lost is impossible, so it is asked
   // for on the way in rather than left as a settings page nobody opens.
@@ -608,8 +629,17 @@ function useAppValue() {
 
   const v = S.view;
   const role = S.role;
+  // Which views live inside the shell, with its sidebar and header.
+  //
+  // The three prefixes were a naming convention rather than a rule, so a view
+  // added without one rendered as a blank page — the shell never opened and
+  // nothing else claimed it. Named views are listed explicitly for that reason.
   const isDash =
-    v.startsWith("admin-") || v.startsWith("merchant-") || v.startsWith("sales-");
+    v.startsWith("admin-") ||
+    v.startsWith("merchant-") ||
+    v.startsWith("sales-") ||
+    v === "integrations" ||
+    v === "developer-docs";
 
   const on = {
     roleAdmin: () => setRole("admin"),
@@ -712,6 +742,9 @@ function useAppValue() {
     salesCreate: () => startNewLink("sales-create-link"),
     salesLinks: () => go("sales-links"),
     salesTxns: () => go("sales-transactions"),
+    integrations: () => go("integrations"),
+    developerDocs: () => go("developer-docs"),
+    adminLiveRequests: () => go("admin-live-requests"),
     // wizard
     typeStatic: () => selectLinkType("static"),
     typeDynamic: () => selectLinkType("dynamic"),
@@ -895,6 +928,9 @@ function useAppValue() {
     "sales-create-link": ["Create Pay-by-Link", "Generate a link for your customer"],
     "sales-links": ["My Links", "Links you have created"],
     "sales-transactions": ["My Payments", "Payments against your links"],
+    integrations: ["Integrations", "API credentials for your systems"],
+    "developer-docs": ["Developer documentation", "How to integrate with PayLink"],
+    "admin-live-requests": ["Go-live requests", "Integrations asking to move real money"],
   };
   const pt = titles[v] || ["", ""];
 
@@ -905,12 +941,14 @@ function useAppValue() {
     merchant_management: {
       name: "Merchant Management", sub: "Merchant onboarding", initials: "MM",
     },
+    integrator: { name: "Integration", sub: "API access", initials: "IN" },
   };
   const roleLabels: Record<Role, string> = {
     admin: "Admin console",
     merchant: "Merchant workspace",
     sales: "Sales workspace",
     merchant_management: "Merchant register",
+    integrator: "Developer workspace",
   };
 
   // ------------------------------------------------------- live overrides
@@ -989,7 +1027,11 @@ function useAppValue() {
     // Everything on screen belongs to one gateway. Shown in the top bar so a
     // rehearsal is never mistaken for real money.
     environment: session?.environment ?? "test",
-    isTestMode: !!live && (session?.environment ?? "test") === "test",
+    // Any signed-in session, not only an operator's. This was keyed on `live`,
+    // which is true for the sales role alone — so an integrator working against
+    // the test gateway was shown a LIVE badge. That badge is the one piece of
+    // the interface that says whether the money is real.
+    isTestMode: !!session && (session.environment ?? "test") === "test",
     createError,
     // --- self-registration ---------------------------------------------
     reg,
@@ -1028,6 +1070,19 @@ function useAppValue() {
     isAdmin: role === "admin",
     isMerchant: role === "merchant",
     isSales: role === "sales",
+    isIntegrator: role === "integrator",
+    // True when a real account is signed in, as opposed to the prototype role
+    // switcher. The screens still carrying invented figures are hidden from a
+    // live session: showing a bank administrator $419,760 that nobody earned is
+    // worse than showing them one fewer menu item.
+    isLiveSession: !!session,
+    isIntegrations: v === "integrations",
+    isDeveloperDocs: v === "developer-docs",
+    isAdminLiveRequests: v === "admin-live-requests",
+    // The documentation quotes the address this portal is actually served on,
+    // so an integrator copies a base URL that works rather than one from an
+    // example they then have to remember to change.
+    origin: typeof window === "undefined" ? "" : window.location.origin,
     layoutSidebar: S.layout === "sidebar",
     layoutTopnav: S.layout === "topnav",
     // view flags

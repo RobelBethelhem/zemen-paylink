@@ -116,8 +116,12 @@ func (s *Server) sessionFor(u *domain.User, token, expiresAt string) sessionPayl
 		// Which gateway this session is working against. The portal shows it on
 		// every screen: a test payment must never be read as real money.
 		Environment: string(s.environmentFor(u)),
-		// Only the operator role transacts against MPGS directly.
-		RequiresGateway:  u.Role == domain.RoleSales && !connected,
+		// The roles that transact against MPGS directly. An integrator does it
+		// through the API rather than by hand, but the link still has to settle
+		// somewhere — without a gateway their first API call would be refused,
+		// so they are asked for it on the way in rather than at that point.
+		RequiresGateway: (u.Role == domain.RoleSales || u.Role == domain.RoleIntegrator) &&
+			!connected,
 		RequiresRecovery: !hasRecovery,
 		IdleSeconds:      int(s.tokens.Idle().Seconds()),
 		LifetimeSeconds:  int(s.tokens.TTL().Seconds()),

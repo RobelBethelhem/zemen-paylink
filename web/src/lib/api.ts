@@ -17,7 +17,74 @@ import { openResponse, resetChannel, sealRequest } from "@/lib/secure";
 
 const TOKEN_STORAGE_KEY = "zemen.paylink.token";
 
-export type Role = "admin" | "merchant" | "sales" | "merchant_management";
+export type Role =
+  | "admin"
+  | "merchant"
+  | "sales"
+  | "merchant_management"
+  | "integrator";
+
+/** One third-party system's credentials, in one environment. */
+export type Integration = {
+  id: string;
+  name: string;
+  environment: Environment;
+  /** Safe to show. The secret and encryption keys are never returned. */
+  apiKey: string;
+  secretHint: string;
+  status: "active" | "suspended";
+  callbackSuccessUrl: string;
+  callbackFailureUrl: string;
+  webhookUrl: string;
+  /** Links cannot be created until the gateway for this environment is connected. */
+  gatewayConnected: boolean;
+  lastUsedAt?: string;
+  createdAt: string;
+  /** Where this one stands on going live: none, pending, approved, rejected, live. */
+  liveStatus: string;
+  liveNote?: string;
+};
+
+/**
+ * Shown once, when credentials are issued. Nothing stores the secret or the
+ * encryption key in the clear, so a copy not taken here is a rotation later.
+ */
+export type IssuedCredentials = {
+  apiKey: string;
+  secretKey: string;
+  payloadKey: string;
+};
+
+export type WebhookDelivery = {
+  id: string;
+  event: string;
+  paymentId: string;
+  status: "pending" | "delivered" | "exhausted";
+  attempts: number;
+  responseCode: number;
+  lastError?: string;
+  createdAt: string;
+  deliveredAt?: string;
+};
+
+/** A go-live request as the reviewing administrator sees it. */
+export type LiveRequest = {
+  id: string;
+  status: "pending" | "approved" | "rejected";
+  note: string;
+  requestedAt: string;
+  integration?: string;
+  integrationId?: string;
+  environment?: string;
+  webhookUrl?: string;
+  merchant?: string;
+  merchantId?: string;
+  requestedBy?: string;
+  requestedByUsername?: string;
+  /** The evidence the decision rests on, not a self-reported figure. */
+  testPayments?: number;
+  testPaymentsSettled?: number;
+};
 
 export type SessionUser = {
   id: string;
@@ -785,4 +852,52 @@ export const api = {
     request<Receipt>(`/api/v1/public/receipts/${encodeURIComponent(orderId)}`, {
       anonymous: true,
     }),
+
+  // ---------------------------------------------------------- integrations
+
+  integrations: () => request<{ integrations: Integration[] }>("/api/v1/integrations"),
+
+  createIntegration: (name: string) =>
+    request<{ integration: Integration; credentials: IssuedCredentials; notice: string }>(
+      "/api/v1/integrations",
+      { method: "POST", body: { name } },
+    ),
+
+  updateIntegrationEndpoints: (
+    id: string,
+    input: { callbackSuccessUrl: string; callbackFailureUrl: string; webhookUrl: string },
+  ) =>
+    request<{ integration: Integration }>(
+      `/api/v1/integrations/${encodeURIComponent(id)}/endpoints`,
+      { method: "PUT", body: input },
+    ),
+
+  /** Issues a fresh secret and encryption key, keeping the API key. */
+  rotateIntegration: (id: string) =>
+    request<{ credentials: IssuedCredentials; notice: string }>(
+      `/api/v1/integrations/${encodeURIComponent(id)}/rotate`,
+      { method: "POST" },
+    ),
+
+  requestLive: (id: string, note: string) =>
+    request<{ status: string; message: string }>(
+      `/api/v1/integrations/${encodeURIComponent(id)}/go-live`,
+      { method: "POST", body: { note } },
+    ),
+
+  deliveries: (id: string) =>
+    request<{ deliveries: WebhookDelivery[] }>(
+      `/api/v1/integrations/${encodeURIComponent(id)}/deliveries`,
+    ),
+
+  // ----------------------------------------------------------------- admin
+
+  liveRequests: (status: "pending" | "approved" | "rejected" = "pending") =>
+    request<{ requests: LiveRequest[] }>(`/api/v1/admin/live-requests?status=${status}`),
+
+  reviewLiveRequest: (id: string, decision: "approved" | "rejected", note: string) =>
+    request<{ status: string; integrationId?: string; message?: string }>(
+      `/api/v1/admin/live-requests/${encodeURIComponent(id)}`,
+      { method: "POST", body: { decision, note } },
+    ),
 };
