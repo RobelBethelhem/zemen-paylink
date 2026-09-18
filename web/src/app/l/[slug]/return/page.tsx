@@ -173,6 +173,28 @@ function ReturnView() {
     };
   }, [orderId, attempts]);
 
+  // Hand the payer back to the system that asked for this link, when it asked
+  // for them back.
+  //
+  // Only once the outcome has settled — the server sends nothing while a
+  // payment is still in flight, so a redirect can never land somebody on a page
+  // claiming a result neither side knows yet.
+  //
+  // Deliberately not instant: the bank confirms what happened first, and the
+  // link stays on screen so a blocked or failed redirect is a dead end for
+  // nobody.
+  const continueURL = status?.continueUrl ?? "";
+  const [returning, setReturning] = useState(false);
+
+  useEffect(() => {
+    if (!continueURL) return;
+    setReturning(true);
+    const timer = setTimeout(() => {
+      window.location.replace(continueURL);
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, [continueURL]);
+
   const outcome = outcomeFor(status, error);
   const { fg, bg } = TONES[outcome.tone];
 
@@ -243,6 +265,24 @@ function ReturnView() {
               View receipt
             </a>
           ) : null}
+
+          {/* The link is shown, not just followed. A redirect can be blocked,
+              slow or simply fail, and a payer whose money has moved should
+              never be left on a page with no way forward. */}
+          {returning ? (
+            <div style={s("margin-top:18px;padding-top:18px;border-top:1px solid #F0F0F2")}>
+              <div style={s("display:flex;align-items:center;justify-content:center;gap:9px;color:#6B6D76;font-size:13px")}>
+                <span style={s("width:14px;height:14px;border:2px solid #E3E3E6;border-top-color:#DA1E28;border-radius:50%;animation:spin .7s linear infinite")} />
+                Returning you to {hostOf(continueURL)}…
+              </div>
+              <a
+                href={continueURL}
+                style={s("display:block;margin-top:10px;font-size:12.5px;font-weight:600;color:#DA1E28;text-decoration:none")}
+              >
+                Continue now
+              </a>
+            </div>
+          ) : null}
         </div>
 
         <div
@@ -292,4 +332,14 @@ export default function ReturnPage() {
       <ReturnView />
     </Suspense>
   );
+}
+
+// hostOf names where the payer is being sent, so "returning you to…" says a
+// place rather than a whole URL with a query string on the end.
+function hostOf(raw: string): string {
+  try {
+    return new URL(raw).host;
+  } catch {
+    return "the merchant";
+  }
 }

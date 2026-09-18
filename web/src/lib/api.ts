@@ -376,6 +376,14 @@ export type PaymentStatus = {
   gatewayStatus?: string;
   completedAt?: string;
   receipt?: string;
+  /**
+   * Where to send the payer once the outcome has settled, when the system that
+   * created this link asked for them back. Absent for a link made in the
+   * portal, and absent while a payment is still in flight — the server decides
+   * which of the two addresses applies, so this page never re-decides what
+   * "succeeded" means.
+   */
+  continueUrl?: string;
 };
 
 /** ApiError carries the server's own message so screens can show it verbatim. */

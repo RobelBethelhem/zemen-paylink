@@ -81,6 +81,7 @@ const SECTIONS: Array<[string, string]> = [
   ["sealing", "Sealing the body"],
   ["client", "A working client"],
   ["create", "Creating a link"],
+  ["returning", "Returning the payer"],
   ["metadata", "Metadata"],
   ["webhooks", "Webhooks"],
   ["errors", "When it is refused"],
@@ -301,6 +302,38 @@ export async function call(method, path, payload) {
                 ["metadata", "Up to 20 key/value pairs, returned with every payment."],
               ]}
             />
+          </Section>
+
+          <Section id="returning" title="Returning the payer to you">
+            <P>
+              Set <code>successUrl</code> and <code>failureUrl</code> and we hand the
+              payer back to you once the outcome is settled.
+            </P>
+            <P>
+              Mastercard returns them to our confirmation page, which states what
+              happened to their money, waits about two and a half seconds, then sends
+              them on. The link is on screen throughout, so a blocked or slow redirect
+              strands nobody.
+            </P>
+            <P>The order id is appended, so your page knows which payment it is for:</P>
+            <Code>{`https://z-care.et/thanks/clean-water?order=PL-4611-ZunsGsqW`}</Code>
+            <P>Any query string you already put on the URL is kept.</P>
+            <Table
+              rows={[
+                ["successUrl", "paid, partially captured, authorized, refunded"],
+                ["failureUrl", "failed, cancelled, expired"],
+                ["neither", "while the payment is still in flight — nobody is redirected until the result is known"],
+              ]}
+            />
+            <P>
+              Set them per link when you create it, or set defaults on the Integrations
+              screen and leave them off the request — a link&rsquo;s own values win.
+            </P>
+            <P>
+              <strong>The redirect is not proof of payment.</strong> A payer can close
+              the tab, lose signal, or never arrive. Treat it as navigation, and take
+              the webhook or a direct lookup as the truth about the money.
+            </P>
           </Section>
 
           <Section id="metadata" title="Metadata">

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -302,6 +303,50 @@ type paymentStatusView struct {
 	GatewayStatus string `json:"gatewayStatus,omitempty"`
 	CompletedAt   string `json:"completedAt,omitempty"`
 	Receipt       string `json:"receipt,omitempty"`
+
+	// Where to send the payer once the outcome is settled, when the system that
+	// created this link asked for them back. Empty for a link made in the
+	// portal, where the payer stays on our own receipt.
+	//
+	// Chosen here rather than in the browser: which of the two applies is a
+	// judgement about the payment, and the page should not be re-deciding what
+	// "succeeded" means.
+	ContinueURL string `json:"continueUrl,omitempty"`
+}
+
+// continueURL picks the integrator's return address for this outcome.
+//
+// Returns nothing while a payment is still in flight: a redirect fired on a
+// pending status would hand the payer to a page claiming an outcome neither
+// side knows yet.
+func continueURL(p *domain.Payment, l *domain.PayLink) string {
+	switch p.Status {
+	case domain.PaymentPaid, domain.PaymentPartiallyCaptured,
+		domain.PaymentAuthorized, domain.PaymentPartiallyRefunded, domain.PaymentRefunded:
+		return l.CallbackSuccessURL
+	case domain.PaymentFailed, domain.PaymentCancelled, domain.PaymentExpired:
+		return l.CallbackFailureURL
+	}
+	return ""
+}
+
+// withOrder appends the order id, so the page we hand the payer to knows which
+// payment it is being told about rather than correlating on timing.
+//
+// The address was validated as an absolute http(s) URL when the link was
+// created, and any query string the integrator put on it is preserved.
+func withOrder(raw, orderID string) string {
+	if raw == "" {
+		return ""
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	query := parsed.Query()
+	query.Set("order", orderID)
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
 }
 
 // handlePublicPaymentStatus reconciles an attempt with the gateway. The
@@ -350,6 +395,7 @@ func (s *Server) handlePublicPaymentStatus(w http.ResponseWriter, r *http.Reques
 		CardLast4:     payment.CardLast4,
 		GatewayStatus: payment.GatewayStatus,
 		Receipt:       payment.ID,
+		ContinueURL:   withOrder(continueURL(payment, link), payment.OrderID),
 	}
 	if payment.CompletedAt != nil {
 		view.CompletedAt = payment.CompletedAt.Format(time.RFC3339)

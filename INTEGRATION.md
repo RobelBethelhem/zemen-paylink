@@ -210,6 +210,40 @@ Returns **201** with the link:
 
 Send the payer to `url`. That is the whole of it.
 
+### Returning the payer to you
+
+Set `successUrl` and `failureUrl` and we hand the payer back to you once the
+outcome is settled.
+
+What they see: Mastercard returns them to our confirmation page, which states
+what happened to their money, waits about two and a half seconds, and then
+sends them to your address. The link is on screen the whole time, so a blocked
+or slow redirect leaves nobody stranded.
+
+The order id is appended, so your page knows which payment it is being shown
+for:
+
+```
+https://z-care.et/thanks/clean-water?order=PL-4611-ZunsGsqW
+```
+
+Any query string you already put on the URL is kept.
+
+Which address is used is decided by us, from the payment:
+
+| Outcome | Sent to |
+|---|---|
+| paid, partially captured, authorized, refunded | `successUrl` |
+| failed, cancelled, expired | `failureUrl` |
+| still in flight | neither — nobody is redirected until the result is known |
+
+Set these per link when you create it, or set defaults on the Integrations
+screen and leave them off the request. A link's own values win.
+
+**The redirect is not proof of payment.** A payer can close the tab, lose
+signal, or simply not arrive. Treat it as navigation, and take the webhook or a
+direct lookup as the truth about the money.
+
 ### Metadata is the part worth getting right
 
 Whatever you put in `metadata` comes back on every payment and every webhook for
