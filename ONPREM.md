@@ -206,20 +206,46 @@ and be attributed to it, which is every rate limit and lockout undone at once.
 This is why the default no longer includes `10.0.0.0/8` and `192.168.0.0/16`.
 **An existing deployment should narrow it.**
 
-### If customers pay from outside, not just integrators
+### Serving the portal and the payment pages under the prefix
 
-The API works under a prefix. The pages a customer opens do not, unless the
-proxy is set up for it — a browser asks for `/_next/...` at the proxy's root,
-which is not routed here, and the payment page arrives with no styling and no
-JavaScript.
+The API works under a prefix on its own. The pages do not, until the app is
+told the prefix it is published at. Without that, a browser asks for
+`/_next/...` at the proxy's root, the proxy has no route for it, and the page
+arrives with no styling and no JavaScript — a console full of 403s and
+"Refused to execute script", which reads like a broken build rather than a
+path nobody was told about.
 
-Two ways round it, and the choice is the proxy team's:
+Build the image with the prefix:
 
-- **A dedicated hostname** — `pay.zemenbank.com` forwarded whole, no path
-  prefix. Nothing else to configure; set `PAYLINK_PUBLIC_BASE_URL` to it.
-- **Keep the prefix on the way through**, and build the image with
-  `PAYLINK_BASE_PATH=/paybylinkapi` so Next emits its assets under that path.
-  It is baked in at build time, so changing it means rebuilding.
+```bash
+PAYLINK_BASE_PATH=/paybylinkapi
+```
+
+It is baked in at build time — Next emits asset URLs during the build — so
+changing it means `up -d --build`, not a restart.
+
+**The proxy must pass the prefix through, not strip it.** This is a
+requirement, not a preference. A stripping proxy cannot be made to work here:
+put the prefix back on the way in and Next redirects to the canonical path,
+the browser asks the proxy for it, the proxy strips it again, and the two spin
+forever. One line on their side; nothing we can do on ours.
+
+**The internal address gains the prefix too**, which is the point — one path
+everywhere:
+
+```
+https://10.1.2.136:2000/paybylinkapi
+https://share.zemenbank.com/paybylinkapi
+```
+
+`PAYLINK_BASE_PATH` must match on both the `web` build and the `caddy`
+service. Compose reads it once from `.env.production`, so they cannot drift —
+but if you ever set it by hand, set it in both places.
+
+The alternative, if the proxy team would rather not pass a path through, is a
+**dedicated hostname** — `pay.zemenbank.com` forwarded whole. Then leave
+`PAYLINK_BASE_PATH` empty, point `PAYLINK_PUBLIC_BASE_URL` at it, and nothing
+else changes.
 
 ## Letting another system create links
 

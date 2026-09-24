@@ -44,6 +44,10 @@ services:
       PAYLINK_HOST: ${PAYLINK_HOSTNAME}
       # The reverse proxy in front of us, so Caddy keeps the forwarded chain
       # rather than replacing it. Must also appear in PAYLINK_TRUSTED_PROXIES.
+      # The path a reverse proxy publishes us under, when it keeps that path on
+      # the way through. Must match the PAYLINK_BASE_PATH the web image was
+      # BUILT with — Next bakes it in, so the two cannot drift at runtime.
+      PAYLINK_BASE_PATH: ${PAYLINK_BASE_PATH:-/__no-base-path__}
       PAYLINK_EDGE_PROXIES: ${PAYLINK_EDGE_PROXIES:-127.0.0.1/32}
       PAYLINK_TLS: ${PAYLINK_TLS:-internal}
     depends_on:

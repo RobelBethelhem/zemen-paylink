@@ -9,7 +9,16 @@
 export function apiBase(): string {
   const configured = process.env.NEXT_PUBLIC_API_BASE_URL;
   if (configured) return configured.replace(/\/$/, "");
-  if (typeof window !== "undefined") return ""; // same origin
+  if (typeof window !== "undefined") {
+    // Same origin — but under the path a reverse proxy publishes us at, when
+    // there is one.
+    //
+    // Without this the browser asks for /api/v1/... at the proxy's root, which
+    // is not routed to us and comes back 403. It is the same failure that
+    // leaves the page with no stylesheet and no JavaScript, and it looks like
+    // a broken deployment rather than a path that was never told to anyone.
+    return (process.env.NEXT_PUBLIC_BASE_PATH ?? "").replace(/\/$/, "");
+  }
   return "http://localhost:8080"; // server-side (not used by the browser paths)
 }
 

@@ -80,6 +80,27 @@ https://{$PAYLINK_SITE} {
 		-Server
 	}
 
+	# Published under a path prefix, when a reverse proxy puts us behind one.
+	#
+	# The prefix is stripped for the API, which routes on /api/v1/... and knows
+	# nothing about where it is published. It is deliberately NOT stripped for
+	# the portal further down: Next was built with the same prefix as its
+	# basePath, so it expects to see it and emits its own asset URLs beneath it.
+	# That asymmetry is the whole trick — strip it for both and the browser asks
+	# for /_next/... at the proxy's root, which is not routed here and comes
+	# back 403, leaving a page with no styling and no JavaScript.
+	#
+	# The default is a path nothing will ever request, so these two blocks are
+	# inert on a deployment that is not published under a prefix.
+	handle {$PAYLINK_BASE_PATH:/__no-base-path__}/api/v1/* {
+		uri strip_prefix {$PAYLINK_BASE_PATH:/__no-base-path__}
+		reverse_proxy api:8080
+	}
+	handle {$PAYLINK_BASE_PATH:/__no-base-path__}/healthz {
+		uri strip_prefix {$PAYLINK_BASE_PATH:/__no-base-path__}
+		reverse_proxy api:8080
+	}
+
 	# The API is reached directly rather than through the portal's own rewrite,
 	# which saves a hop on every call. /healthz belongs to it too — a health
 	# check that answers from the wrong service is worse than none.
@@ -110,7 +131,18 @@ https://{$PAYLINK_SITE} {
 		reverse_proxy api:8080
 	}
 
-	# Everything else is the portal.
+	# Everything else is the portal, with the path untouched.
+	#
+	# When the portal is built with a basePath, Next expects to see that prefix
+	# on every request, and the proxy in front MUST pass it through rather than
+	# strip it. That is not a preference — a stripping proxy cannot be made to
+	# work here by rewriting. Putting the prefix back on the way in means Next
+	# then redirects to the canonical path, the browser asks the proxy for it,
+	# the proxy strips it again, and the two spin forever.
+	#
+	# With the prefix passed through there is nothing to do: the portal is
+	# reached at the same path inside the bank and outside it, which is also one
+	# fewer thing for anyone to get wrong.
 	handle {
 		reverse_proxy web:3000
 	}

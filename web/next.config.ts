@@ -93,6 +93,12 @@ const nextConfig: NextConfig = {
 
   ...(basePath ? { basePath, assetPrefix: basePath } : {}),
 
+  // The same value, readable from browser code. Next applies basePath to its
+  // own pages and assets automatically, but the API calls this app makes are
+  // plain fetches to /api/v1/... and know nothing about it — so they need it
+  // spelled out. See apiBase() in lib/api.ts.
+  env: { NEXT_PUBLIC_BASE_PATH: basePath },
+
   allowedDevOrigins: devOrigins(),
 
   // A production bundle ships no source maps: it does not stop anyone reading
