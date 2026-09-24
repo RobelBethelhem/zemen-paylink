@@ -75,6 +75,30 @@ https://{$PAYLINK_SITE} {
 	# and this server publishes neither.
 	tls {$PAYLINK_TLS}
 
+	# Caddy writes no access log unless asked, and without one there is no
+	# record of what actually arrived at the edge — only what the application
+	# made of it. That gap is worst exactly when it matters: published behind
+	# the bank's reverse proxy, the path and Host that reach us are the proxy's
+	# decision, not ours, and a mismatch shows up as an ordinary 404 from the
+	# portal with nothing to say whether the prefix was passed through, stripped
+	# or rewritten.
+	#
+	#   docker compose -f docker-compose.prod.yml logs caddy | grep '"uri"'
+	#
+	# Caddy redacts Cookie and Authorization to "REDACTED" in this format on
+	# its own, so the session cookie and the bearer token do not reach the log.
+	# Worth knowing rather than assuming: everything else in the header map is
+	# written verbatim, so anything secret added to a header later needs a
+	# filter here.
+	#
+	# /healthz is skipped because the container health check polls it every few
+	# seconds and would otherwise be the entire log.
+	log {
+		output stderr
+		format json
+	}
+	log_skip /healthz
+
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		-Server
