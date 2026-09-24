@@ -5,6 +5,7 @@ import { s } from "@/lib/css";
 import { ApiError, api, type Environment, type GatewayCredentials } from "@/lib/api";
 import { useApp } from "@/store/AppProvider";
 import { useSession } from "@/store/SessionProvider";
+import { asset } from "@/lib/asset";
 
 // Fallbacks if the API is unreachable while the form loads; the server is the
 // authority on which hosts may be used.
@@ -131,7 +132,7 @@ export function ConnectGateway() {
       >
         <div style={s("display:flex;align-items:center;gap:11px;margin-bottom:26px")}>
           <img
-            src="/zemen-logo-dark.png"
+            src={asset("/zemen-logo-dark.png")}
             alt="Zemen Bank"
             style={s("height:30px;width:auto;display:block")}
           />

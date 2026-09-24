@@ -2,6 +2,7 @@
 
 import { s } from "@/lib/css";
 import { useApp } from "@/store/AppProvider";
+import { asset } from "@/lib/asset";
 
 export function CreateLink() {
   const { amount, amountDisplay, createError, currency, paymentModeSeg, typeSplit, splitTarget, dynMax, dynMin, expiry, expiryLabel, generating, linkTypeLabel, maxScans, maxScansLabel, modeQuick, modeSeg, modeWizard, notOneTime, notStep1, notStep4, on, oneTime, reference, set, step1, step2, step3, step4, title, titleDisplay, typeDynamic, typeSeg, typeStatic, w } = useApp();
@@ -827,7 +828,7 @@ export function CreateLink() {
           <div style={s("background:#fff;border:1px solid #ECECEE;border-radius:18px;box-shadow:0 12px 34px rgba(20,21,25,.1);overflow:hidden")}>
             <div style={s("background:#141519;padding:14px 18px;display:flex;align-items:center;justify-content:space-between")}>
               <div style={s("display:flex;align-items:center;gap:9px")}>
-                <img src="/zemen-logo-light.png" alt="Zemen Bank" style={s("height:22px;width:auto;display:block")} />
+                <img src={asset("/zemen-logo-light.png")} alt="Zemen Bank" style={s("height:22px;width:auto;display:block")} />
                 <span style={s("width:1px;height:18px;background:rgba(255,255,255,.18)")} />
                 <span style={s("font-family:'Space Grotesk';font-weight:600;font-size:13px;color:#fff")}>
                   PayLink

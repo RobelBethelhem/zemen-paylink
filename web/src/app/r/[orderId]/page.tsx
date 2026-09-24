@@ -3,6 +3,7 @@
 import { use, useEffect, useState } from "react";
 import { ApiError, api, type Receipt } from "@/lib/api";
 import { s } from "@/lib/css";
+import { asset } from "@/lib/asset";
 
 // The payer's printable proof of payment. Reached from the confirmation page,
 // or from the operator's payment detail when a customer asks for a copy.
@@ -143,7 +144,7 @@ export default function ReceiptPage({ params }: { params: Promise<{ orderId: str
           <div style={s("padding:30px 30px 24px;border-bottom:1px solid #F0F0F2")}>
             <div style={s("display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:24px")}>
               <img
-                src="/zemen-logo-dark.png"
+                src={asset("/zemen-logo-dark.png")}
                 alt="Zemen Bank"
                 style={s("height:30px;width:auto;display:block")}
               />

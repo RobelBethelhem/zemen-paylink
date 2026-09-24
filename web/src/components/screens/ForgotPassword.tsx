@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ApiError, api, type SecurityQuestion } from "@/lib/api";
 import { s } from "@/lib/css";
 import { useApp } from "@/store/AppProvider";
+import { asset } from "@/lib/asset";
 
 // Two visible steps, one request.
 //
@@ -86,7 +87,7 @@ export function ForgotPassword() {
         )}
       >
         <div style={s("display:flex;align-items:center;gap:11px;margin-bottom:26px")}>
-          <img src="/zemen-logo-dark.png" alt="Zemen Bank" style={s("height:30px;width:auto;display:block")} />
+          <img src={asset("/zemen-logo-dark.png")} alt="Zemen Bank" style={s("height:30px;width:auto;display:block")} />
           <span style={s("width:1px;height:22px;background:#E0E0E3")} />
           <div style={s("font-family:'Space Grotesk';font-weight:600;font-size:17px;color:#141519")}>
             PayLink

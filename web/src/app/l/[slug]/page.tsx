@@ -3,6 +3,7 @@
 import { use, useEffect, useState } from "react";
 import { s } from "@/lib/css";
 import { ApiError, api, type CheckoutSession, type PublicLink } from "@/lib/api";
+import { asset } from "@/lib/asset";
 
 // The gateway's checkout.js attaches this global once loaded.
 declare global {
@@ -140,7 +141,7 @@ export default function PayPage({ params }: { params: Promise<{ slug: string }> 
         >
           <div style={s("display:flex;align-items:center;gap:11px")}>
             <img
-              src="/zemen-logo-light.png"
+              src={asset("/zemen-logo-light.png")}
               alt="Zemen Bank"
               style={s("height:26px;width:auto;display:block")}
             />

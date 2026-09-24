@@ -2,6 +2,7 @@
 
 import { s } from "@/lib/css";
 import { useApp } from "@/store/AppProvider";
+import { asset } from "@/lib/asset";
 
 // Operators sign themselves up. The merchant number is the control: it has to
 // already be in the register the bank keeps, and it is what decides the name
@@ -28,7 +29,7 @@ export function Register() {
         )}
       >
         <div style={s("display:flex;align-items:center;gap:11px;margin-bottom:26px")}>
-          <img src="/zemen-logo-dark.png" alt="Zemen Bank" style={s("height:30px;width:auto;display:block")} />
+          <img src={asset("/zemen-logo-dark.png")} alt="Zemen Bank" style={s("height:30px;width:auto;display:block")} />
           <span style={s("width:1px;height:22px;background:#E0E0E3")} />
           <div style={s("font-family:'Space Grotesk';font-weight:600;font-size:17px;color:#141519")}>
             PayLink

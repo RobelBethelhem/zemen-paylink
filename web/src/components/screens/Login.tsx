@@ -2,6 +2,7 @@
 
 import { s } from "@/lib/css";
 import { useApp } from "@/store/AppProvider";
+import { asset } from "@/lib/asset";
 
 export function Login() {
   const { authBusy, authError, email, on, password, regDone, set, signedOutReason, takeover } =
@@ -15,7 +16,7 @@ export function Login() {
         <div style={s("position:absolute;top:-120px;right:-120px;width:420px;height:420px;border-radius:50%;background:radial-gradient(circle,#DA1E28 0%,rgba(218,30,40,0) 70%);opacity:.5")} />
         <div style={s("position:absolute;bottom:-160px;left:-100px;width:380px;height:380px;border-radius:50%;background:radial-gradient(circle,#DA1E28 0%,rgba(218,30,40,0) 70%);opacity:.22")} />
         <div style={s("position:relative;display:flex;align-items:center;gap:13px")}>
-          <img src="/zemen-logo-light.png" alt="Zemen Bank" style={s("height:42px;width:auto;display:block")} />
+          <img src={asset("/zemen-logo-light.png")} alt="Zemen Bank" style={s("height:42px;width:auto;display:block")} />
           <span style={s("width:1px;height:34px;background:rgba(255,255,255,.18)")} />
           <div>
             <div style={s("font-family:'Space Grotesk';font-weight:600;font-size:19px;letter-spacing:-.02em;white-space:nowrap;line-height:1.1;color:#fff")}>
@@ -60,7 +61,7 @@ export function Login() {
       >
         <div style={s("width:100%;max-width:392px;animation:fadeUp .5s ease both")}>
           <div data-only-mobile="" style={s("display:flex;align-items:center;gap:11px;margin-bottom:28px")}>
-            <img src="/zemen-logo-dark.png" alt="Zemen Bank" style={s("height:30px;width:auto;display:block")} />
+            <img src={asset("/zemen-logo-dark.png")} alt="Zemen Bank" style={s("height:30px;width:auto;display:block")} />
             <span style={s("width:1px;height:22px;background:#E0E0E3")} />
             <div style={s("font-family:'Space Grotesk';font-weight:600;font-size:17px;color:#141519")}>PayLink</div>
           </div>

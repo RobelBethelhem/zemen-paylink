@@ -106,16 +106,16 @@ https://{$PAYLINK_SITE} {
 
 	# Published under a path prefix, when a reverse proxy puts us behind one.
 	#
-	# The prefix is stripped for the API, which routes on /api/v1/... and knows
-	# nothing about where it is published. It is deliberately NOT stripped for
-	# the portal further down: Next was built with the same prefix as its
-	# basePath, so it expects to see it and emits its own asset URLs beneath it.
-	# That asymmetry is the whole trick — strip it for both and the browser asks
-	# for /_next/... at the proxy's root, which is not routed here and comes
-	# back 403, leaving a page with no styling and no JavaScript.
+	# The prefix is stripped everywhere: the API routes on /api/v1/... and the
+	# portal's routes live at /, so neither wants to see where it is published.
 	#
-	# The default is a path nothing will ever request, so these two blocks are
-	# inert on a deployment that is not published under a prefix.
+	# This is what makes one build serve both kinds of reverse proxy. A proxy
+	# that strips the prefix has already removed it by the time we are asked; a
+	# proxy that passes it through leaves it for these blocks to remove. Either
+	# way the applications behind see the same paths.
+	#
+	# The default is a path nothing will ever request, so these blocks are inert
+	# on a deployment that is not published under a prefix.
 	handle {$PAYLINK_BASE_PATH:/__no-base-path__}/api/v1/* {
 		uri strip_prefix {$PAYLINK_BASE_PATH:/__no-base-path__}
 		reverse_proxy api:8080
@@ -155,6 +155,28 @@ https://{$PAYLINK_SITE} {
 		reverse_proxy api:8080
 	}
 
+	# The portal, asked for under the published prefix.
+	#
+	# The app is built with assetPrefix rather than basePath, so its routes
+	# live at "/" and only its asset URLs carry the prefix. Behind a proxy that
+	# strips the prefix that is all that is needed — the prefix never reaches
+	# us. Internally nothing strips it, so this does.
+	#
+	# Next rewrites <prefix>/_next/* to /_next/* by itself, but that is the only
+	# thing it rewrites: files served from public/ are asked for at
+	# <prefix>/zemen-logo-dark.png and answered 404. Hence stripping here rather
+	# than relying on the app, which also means the internal deployment answers
+	# at both / and <prefix>, and a link copied from one works in the other.
+	#
+	# Both patterns are needed: /paybylink/* does not match a bare /paybylink.
+	# They go in a named matcher because `handle` accepts one matcher token, not
+	# two — given two inline paths it fails to parse and Caddy will not start.
+	@under_prefix path {$PAYLINK_BASE_PATH:/__no-base-path__} {$PAYLINK_BASE_PATH:/__no-base-path__}/*
+	handle @under_prefix {
+		uri strip_prefix {$PAYLINK_BASE_PATH:/__no-base-path__}
+		reverse_proxy web:3000
+	}
+
 	# Optional extra routing, dropped into caddy-conf.d/ on the server.
 	#
 	# A glob matching no files is valid, so this is inert on a deployment that
@@ -169,18 +191,10 @@ https://{$PAYLINK_SITE} {
 	# prefix cannot be bounced back and forth forever.
 	import /etc/caddy/conf.d/*.caddy
 
-	# Everything else is the portal, with the path untouched.
+	# Everything else is the portal, at the root.
 	#
-	# When the portal is built with a basePath, Next expects to see that prefix
-	# on every request, and the proxy in front MUST pass it through rather than
-	# strip it. That is not a preference — a stripping proxy cannot be made to
-	# work here by rewriting. Putting the prefix back on the way in means Next
-	# then redirects to the canonical path, the browser asks the proxy for it,
-	# the proxy strips it again, and the two spin forever.
-	#
-	# With the prefix passed through there is nothing to do: the portal is
-	# reached at the same path inside the bank and outside it, which is also one
-	# fewer thing for anyone to get wrong.
+	# This is the path a stripping proxy leaves behind, and the path an internal
+	# browser asks for directly. Both arrive here.
 	handle {
 		reverse_proxy web:3000
 	}

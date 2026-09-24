@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { s } from "@/lib/css";
 import { useApp } from "@/store/AppProvider";
+import { asset } from "@/lib/asset";
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const { baseCurrency, isAdmin, isLiveSession, isAdminLiveRequests, isIntegrator, isIntegrations, isDeveloperDocs, isAdminDashboard, isAdminMerchants, isAdminSettings, isAdminTransactions, isMerchBranches, isMerchDashboard, isMerchLinks, isMerchSettings, isMerchTeam, isMerchTransactions, isMerchant, isSales, isSalesDashboard, isSalesLinks, isSalesTransactions, isTestMode, layoutSidebar, layoutTopnav, on, pageSub, pageTitle, roleLabel, sidebarOpen, user } = useApp();
@@ -17,7 +18,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             style={s("width:250px;position:fixed;top:0;left:0;bottom:0;background:#141519;display:flex;flex-direction:column;padding:20px 14px;z-index:60")}
           >
             <div style={s("display:flex;align-items:center;gap:11px;padding:6px 8px 20px")}>
-              <img src="/zemen-logo-light.png" alt="Zemen Bank" style={s("height:30px;width:auto;display:block")} />
+              <img src={asset("/zemen-logo-light.png")} alt="Zemen Bank" style={s("height:30px;width:auto;display:block")} />
               <span style={s("width:1px;height:26px;background:rgba(255,255,255,.16)")} />
               <div>
                 <div style={s("font-family:'Space Grotesk';font-weight:600;font-size:16px;color:#fff;letter-spacing:-.01em;line-height:1.1")}>
@@ -515,7 +516,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <>
           <header style={s("position:sticky;top:0;z-index:60;background:#141519;padding:0 26px;height:62px;display:flex;align-items:center;gap:26px")}>
             <div style={s("display:flex;align-items:center;gap:11px")}>
-              <img src="/zemen-logo-light.png" alt="Zemen Bank" style={s("height:26px;width:auto;display:block")} />
+              <img src={asset("/zemen-logo-light.png")} alt="Zemen Bank" style={s("height:26px;width:auto;display:block")} />
               <span style={s("width:1px;height:22px;background:rgba(255,255,255,.16)")} />
               <div style={s("font-family:'Space Grotesk';font-weight:600;font-size:15px;color:#fff")}>PayLink</div>
             </div>

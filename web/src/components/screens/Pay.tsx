@@ -2,6 +2,7 @@
 
 import { s } from "@/lib/css";
 import { useApp } from "@/store/AppProvider";
+import { asset } from "@/lib/asset";
 
 export function Pay() {
   const { on, payCard, payMinimal, payTab, redirecting } = useApp();
@@ -9,7 +10,7 @@ export function Pay() {
     <div style={s("min-height:100vh;background:#F5F5F6;display:flex;flex-direction:column")}>
       <header style={s("background:#fff;border-bottom:1px solid #E9E9EC;padding:0 22px;height:60px;display:flex;align-items:center;gap:14px")}>
         <div style={s("display:flex;align-items:center;gap:10px")}>
-          <img src="/zemen-logo-dark.png" alt="Zemen Bank" style={s("height:28px;width:auto;display:block")} />
+          <img src={asset("/zemen-logo-dark.png")} alt="Zemen Bank" style={s("height:28px;width:auto;display:block")} />
           <span style={s("width:1px;height:22px;background:#E0E0E3")} />
           <span style={s("font-family:'Space Grotesk';font-weight:600;font-size:15px;color:#141519;white-space:nowrap")}>
             PayLink
@@ -158,7 +159,7 @@ export function Pay() {
         <>
           <div style={s("position:fixed;inset:0;background:#141519;z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center;animation:fadeIn .25s ease both")}>
             <div style={s("display:flex;align-items:center;gap:11px;position:absolute;top:26px;left:26px")}>
-              <img src="/zemen-logo-light.png" alt="Zemen Bank" style={s("height:28px;width:auto;display:block")} />
+              <img src={asset("/zemen-logo-light.png")} alt="Zemen Bank" style={s("height:28px;width:auto;display:block")} />
               <span style={s("width:1px;height:22px;background:rgba(255,255,255,.2)")} />
               <span style={s("font-family:'Space Grotesk';font-weight:600;font-size:15px;color:#fff")}>PayLink</span>
             </div>

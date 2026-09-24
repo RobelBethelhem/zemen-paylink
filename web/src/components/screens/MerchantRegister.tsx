@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ApiError, api, type RegisteredMerchant } from "@/lib/api";
 import { s } from "@/lib/css";
 import { useSession } from "@/store/SessionProvider";
+import { asset } from "@/lib/asset";
 
 // Merchant management's whole screen: the register of merchant numbers and the
 // name each trades under. Operators sign up against a number here, and that
@@ -73,7 +74,7 @@ export function MerchantRegister() {
         )}
       >
         <img
-          src="/zemen-logo-light.png"
+          src={asset("/zemen-logo-light.png")}
           alt="Zemen Bank"
           style={s("height:28px;width:auto;display:block")}
         />

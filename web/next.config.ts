@@ -74,16 +74,13 @@ const securityHeaders = [
 ];
 
 // The path a reverse proxy publishes this under, when it publishes it under
-// one — "/paybylinkapi", say.
+// one — "/paybylink", say.
 //
 // Baked in at build time because Next needs it to emit asset URLs: without it
 // the browser asks for /_next/... at the proxy's root, which is not routed
 // here, and the page arrives with no styles and no JavaScript. That failure
 // looks like a broken build rather than a path problem, which is why it is
 // worth being deliberate about.
-//
-// Set PAYLINK_BASE_PATH at image build time, and only when the proxy keeps the
-// prefix on the way through. A proxy that strips it wants this left empty.
 const basePath = (process.env.PAYLINK_BASE_PATH ?? "").replace(/\/$/, "");
 
 const nextConfig: NextConfig = {
@@ -91,12 +88,25 @@ const nextConfig: NextConfig = {
   // the runtime image carries no node_modules tree and no build toolchain.
   output: "standalone",
 
-  ...(basePath ? { basePath, assetPrefix: basePath } : {}),
+  // assetPrefix, deliberately, and NOT basePath.
+  //
+  // basePath moves the routes as well: the app then exists only beneath the
+  // prefix and answers 404 to everything else. That is right only if the proxy
+  // passes the prefix through to us. The bank's does not — it strips it, so
+  // requests arrive at "/" and every route is a 404. Proven from the edge log:
+  // opening share.zemenbank.com/paybylink produced `"uri":"/"` here.
+  //
+  // assetPrefix moves the asset URLs and leaves the routes at "/", which is
+  // what a stripping proxy needs. It also works unchanged behind one that
+  // passes the prefix, because Caddy strips it before the app sees it either
+  // way — so there is one build rather than one per proxy behaviour.
+  ...(basePath ? { assetPrefix: basePath } : {}),
 
-  // The same value, readable from browser code. Next applies basePath to its
-  // own pages and assets automatically, but the API calls this app makes are
-  // plain fetches to /api/v1/... and know nothing about it — so they need it
-  // spelled out. See apiBase() in lib/api.ts.
+  // The same value, readable from browser code.
+  //
+  // assetPrefix covers /_next/* and nothing else. Two things it does not cover
+  // need this: the plain fetches to /api/v1/... (see apiBase in lib/api.ts),
+  // and files served from public/ such as the logo (see asset in lib/asset.ts).
   env: { NEXT_PUBLIC_BASE_PATH: basePath },
 
   allowedDevOrigins: devOrigins(),
