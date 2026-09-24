@@ -155,6 +155,20 @@ https://{$PAYLINK_SITE} {
 		reverse_proxy api:8080
 	}
 
+	# Optional extra routing, dropped into caddy-conf.d/ on the server.
+	#
+	# A glob matching no files is valid, so this is inert on a deployment that
+	# adds nothing. It sits here, before the catch-all below, because `handle`
+	# blocks are mutually exclusive and evaluated in source order — anything
+	# imported after the catch-all could never match.
+	#
+	# The case this exists for: published under a path prefix, the portal is
+	# reachable only beneath that prefix, so the bare internal URL everyone has
+	# bookmarked stops resolving. caddy-conf.d/README.md has the snippet that
+	# redirects it, scoped to the internal host so that a proxy which strips the
+	# prefix cannot be bounced back and forth forever.
+	import /etc/caddy/conf.d/*.caddy
+
 	# Everything else is the portal, with the path untouched.
 	#
 	# When the portal is built with a basePath, Next expects to see that prefix

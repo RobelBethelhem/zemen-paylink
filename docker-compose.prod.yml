@@ -28,6 +28,10 @@ services:
       # Drop a certificate the bank already owns in ./certs and point
       # PAYLINK_TLS at /certs/… to use it instead of issuing one.
       - ./certs:/certs:ro
+      # Optional extra routing, imported by the Caddyfile. Empty by default —
+      # an import glob that matches no files is valid, so a deployment that
+      # needs none of this carries none of it. See caddy-conf.d/README.md.
+      - ./caddy-conf.d:/etc/caddy/conf.d:ro
     environment:
       # host:port — Caddy listens on the port named here.
       #
