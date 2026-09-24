@@ -21,6 +21,10 @@ FROM node:22-alpine AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# The URL prefix a reverse proxy publishes this under, if any. Baked in here
+# because Next emits asset paths at build time — see next.config.ts.
+ARG PAYLINK_BASE_PATH=""
+ENV PAYLINK_BASE_PATH=$PAYLINK_BASE_PATH
 # NODE_ENV=production here is what drops 'unsafe-eval' from the CSP: React only
 # needs it for development debugging, and a live page must not have it.
 ENV NODE_ENV=production

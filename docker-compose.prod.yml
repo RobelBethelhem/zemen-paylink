@@ -30,18 +30,34 @@ services:
       - ./certs:/certs:ro
     environment:
       # host:port — Caddy listens on the port named here.
-      PAYLINK_SITE: ${PAYLINK_HOSTNAME:?set PAYLINK_HOSTNAME}:${PAYLINK_PORT}
+      #
+      # PAYLINK_PUBLIC_SITE adds a second address when a reverse proxy
+      # publishes this: that proxy usually passes the original Host through, so
+      # Caddy is asked for share.zemenbank.com rather than the internal address
+      # and answers 404 to everything unless the name is listed. Written with
+      # the port, because an address without one describes 443 and matches
+      # nothing arriving here.
+      PAYLINK_SITE: ${PAYLINK_HOSTNAME:?set PAYLINK_HOSTNAME}:${PAYLINK_PORT}${PAYLINK_PUBLIC_SITE:+, ${PAYLINK_PUBLIC_SITE}}
       # The host on its own. Caddy needs it without the port for default_sni,
       # which is what lets a browser reach an IP-addressed deployment at all —
       # see the comment in the Caddyfile.
       PAYLINK_HOST: ${PAYLINK_HOSTNAME}
+      # The reverse proxy in front of us, so Caddy keeps the forwarded chain
+      # rather than replacing it. Must also appear in PAYLINK_TRUSTED_PROXIES.
+      PAYLINK_EDGE_PROXIES: ${PAYLINK_EDGE_PROXIES:-127.0.0.1/32}
       PAYLINK_TLS: ${PAYLINK_TLS:-internal}
     depends_on:
       - web
       - api
 
   web:
-    build: ./web
+    build:
+      context: ./web
+      args:
+        # Only set when a reverse proxy publishes this under a path and keeps
+        # that path on the way through. Next bakes asset URLs at build time, so
+        # this cannot be changed by restarting — the image has to be rebuilt.
+        PAYLINK_BASE_PATH: ${PAYLINK_BASE_PATH:-}
     image: paylink-web:latest
     restart: unless-stopped
     expose:

@@ -157,6 +157,70 @@ never collide with anything else on the box. Two rules keep it that way:
 - **Never run `docker system prune`** on a shared host. It removes other
   stacks' unused images and volumes too.
 
+## Publishing through the bank's reverse proxy
+
+To reach this from outside the bank — `https://share.zemenbank.com/paybylinkapi`
+— while the internal address keeps working, add these to `.env.production` and
+rebuild:
+
+```bash
+# The host the proxy forwards, WITH the port. A proxy usually passes the
+# original Host through, and Caddy answers 404 to a name it was not told about.
+PAYLINK_PUBLIC_SITE=share.zemenbank.com:2000
+
+# The path the proxy publishes under and strips before forwarding.
+PAYLINK_PUBLIC_PATH_PREFIX=/paybylinkapi
+
+# The proxy's own address. Needed twice, for two different jobs — see below.
+PAYLINK_EDGE_PROXIES=10.1.2.50/32
+PAYLINK_TRUSTED_PROXIES=172.16.0.0/12,127.0.0.0/8,10.1.2.50/32
+
+# Where links and the gateway return URL point, if customers pay from outside.
+PAYLINK_PUBLIC_BASE_URL=https://share.zemenbank.com/paybylinkapi
+PAYLINK_CORS_ORIGINS=https://share.zemenbank.com,https://10.1.2.136:2000
+```
+
+Then `docker compose -f docker-compose.prod.yml up -d --build`.
+
+### The three that are not obvious
+
+**The API signature covers the path.** An integrator signs
+`/paybylinkapi/api/v1/...` — the address they called — and we are handed the
+path with the prefix already removed. Without `PAYLINK_PUBLIC_PATH_PREFIX` the
+two never match and every public call is refused as `signature_invalid`, which
+sends people hunting through their HMAC code for a fault that is not there.
+
+**The proxy's address is needed in two places, and they do different things.**
+`PAYLINK_EDGE_PROXIES` tells Caddy to keep the forwarded chain instead of
+replacing it; `PAYLINK_TRUSTED_PROXIES` tells the API how far along that chain
+to believe. Miss the first and the chain is thrown away at the door. Miss the
+second and every public caller is attributed to the proxy — one shared
+rate-limit bucket, where a single abusive caller exhausts the budget for
+everybody and a lockout lands on the wrong identity.
+
+**`PAYLINK_TRUSTED_PROXIES` must name proxies and nothing else.** The API walks
+the forwarded chain from the right, past every address listed there, and calls
+the first one it did not put there the client. List a whole LAN range and the
+clients inside it are walked past too — any of them can then prepend an address
+and be attributed to it, which is every rate limit and lockout undone at once.
+This is why the default no longer includes `10.0.0.0/8` and `192.168.0.0/16`.
+**An existing deployment should narrow it.**
+
+### If customers pay from outside, not just integrators
+
+The API works under a prefix. The pages a customer opens do not, unless the
+proxy is set up for it — a browser asks for `/_next/...` at the proxy's root,
+which is not routed here, and the payment page arrives with no styling and no
+JavaScript.
+
+Two ways round it, and the choice is the proxy team's:
+
+- **A dedicated hostname** — `pay.zemenbank.com` forwarded whole, no path
+  prefix. Nothing else to configure; set `PAYLINK_PUBLIC_BASE_URL` to it.
+- **Keep the prefix on the way through**, and build the image with
+  `PAYLINK_BASE_PATH=/paybylinkapi` so Next emits its assets under that path.
+  It is baked in at build time, so changing it means rebuilding.
+
 ## Letting another system create links
 
 A third-party system — a fundraising platform, a billing system — can create

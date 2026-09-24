@@ -21,17 +21,48 @@ import (
 //
 // Only the first hop is taken: the rest of the chain is whatever the client
 // sent, and none of it is ours.
+// clientIP is who a rate limit and a lockout are counted against, so getting it
+// wrong is not cosmetic: too trusting and a caller picks their own identity;
+// too suspicious and every public request shares one bucket, where a single
+// abusive caller exhausts the budget for everybody behind the same proxy.
+//
+// The chain is walked from the right. The rightmost entry was written by the
+// proxy closest to us and is the only one we have any reason to believe; each
+// step left is one more hop we have to have trusted to get there. The first
+// address that is not one of our own proxies is the caller, and everything to
+// its left is whatever that caller chose to write — worth nothing.
+//
+// Taking the leftmost entry instead, which is the obvious reading of the
+// header, is exactly the bug: it is the part an attacker controls.
 func (s *Server) clientIP(r *http.Request) string {
 	peer, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		peer = r.RemoteAddr
 	}
-	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" && s.trustsProxy(peer) {
-		first, _, _ := strings.Cut(forwarded, ",")
-		if first = strings.TrimSpace(first); first != "" {
-			return first
+	// Nothing reached us through a proxy we trust, so the socket is the truth
+	// and the header is somebody's suggestion.
+	if !s.trustsProxy(peer) {
+		return peer
+	}
+
+	hops := strings.Split(r.Header.Get("X-Forwarded-For"), ",")
+	for i := len(hops) - 1; i >= 0; i-- {
+		hop := strings.TrimSpace(hops[i])
+		if hop == "" {
+			continue
+		}
+		// Not an address at all. A client writing nonsense into the header
+		// stops the walk: everything further left came from the same place and
+		// is no more credible.
+		if net.ParseIP(hop) == nil {
+			break
+		}
+		if !s.trustsProxy(hop) {
+			return hop
 		}
 	}
+	// Every hop was one of ours, or there were none. The nearest proxy is the
+	// closest thing to a caller we have.
 	return peer
 }
 

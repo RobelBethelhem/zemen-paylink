@@ -25,9 +25,26 @@ func TestClientIPTrustsOnlyConfiguredProxies(t *testing.T) {
 		{"trusted proxy on the container network is believed",
 			"172.18.0.5:5000", "203.0.113.9", "203.0.113.9"},
 		{"loopback proxy is believed", "127.0.0.1:5000", "203.0.113.9", "203.0.113.9"},
-		{"only the first hop is taken",
-			"127.0.0.1:5000", "203.0.113.9, 10.0.0.1, 172.18.0.5", "203.0.113.9"},
+
+		// The chain is walked from the right, skipping our own proxies. The
+		// first address we did not put there is the caller.
+		{"our own proxies are walked past",
+			"127.0.0.1:5000", "203.0.113.9, 172.18.0.9, 172.18.0.5", "203.0.113.9"},
+
+		// The decisive case. Everything left of the first untrusted hop was
+		// written by that hop and is worth nothing — taking the leftmost entry
+		// instead would let any caller name themselves.
+		{"a caller cannot prepend an address of their choosing",
+			"127.0.0.1:5000", "9.9.9.9, 203.0.113.9, 172.18.0.5", "203.0.113.9"},
+
+		// Nonsense in the header stops the walk rather than being skipped:
+		// whatever wrote it is no more credible about the hops further left.
+		{"nonsense in the chain stops the walk",
+			"127.0.0.1:5000", "9.9.9.9, not-an-address, 172.18.0.5", "127.0.0.1"},
+
 		{"an empty header falls back to the peer", "127.0.0.1:5000", "  ", "127.0.0.1"},
+		{"a chain of only our own proxies falls back to the peer",
+			"127.0.0.1:5000", "172.18.0.9, 172.18.0.5", "127.0.0.1"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

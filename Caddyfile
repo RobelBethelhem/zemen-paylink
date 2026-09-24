@@ -21,12 +21,44 @@
 	# harmless when PAYLINK_HOSTNAME is a real host name, because a browser
 	# sends SNI in that case and this is never consulted.
 	default_sni {$PAYLINK_HOST}
+
+	servers {
+		# The proxies in front of us whose X-Forwarded-For is worth keeping.
+		#
+		# Caddy discards an incoming forwarded header by default and writes the
+		# peer it can see instead — which is right, because an arbitrary client
+		# may claim anything. The cost is that a real proxy chain is thrown away
+		# too: without this, every request published through the bank's reverse
+		# proxy arrives attributed to that proxy, and every public caller shares
+		# one rate-limit bucket.
+		#
+		# Naming the bank's proxy here is what lets the client's own address
+		# survive the hop. It must be listed in PAYLINK_TRUSTED_PROXIES as well
+		# — Caddy decides whether to keep the chain, the API decides how far
+		# along it to believe, and both have to agree.
+		#
+		# Defaults to loopback, which cannot be a remote peer here and so trusts
+		# nothing in practice.
+		trusted_proxies static {$PAYLINK_EDGE_PROXIES:127.0.0.1/32}
+	}
 }
 
 # The scheme is written out because the port is not 443: given a bare
 # host:port Caddy would serve plain HTTP, and the portal cannot work that way —
 # browsers withhold WebCrypto outside a secure context, so the sealed channel
 # would never open.
+#
+# PAYLINK_SITE may name more than one address, comma separated, and the scheme
+# applies to all of them. That is what lets one deployment answer both the
+# internal address and the host the bank's reverse proxy forwards:
+#
+#   PAYLINK_SITE="10.1.2.136:2000, share.zemenbank.com:2000"
+#
+# The port matters on the second one. A reverse proxy usually passes the
+# original Host through, so Caddy is asked for share.zemenbank.com on port
+# 2000; an address written without the port describes 443, matches nothing
+# arriving here, and every public request becomes a 404 that looks like a
+# routing fault somewhere else entirely.
 https://{$PAYLINK_SITE} {
 	encode zstd gzip
 
@@ -56,18 +88,26 @@ https://{$PAYLINK_SITE} {
 	}
 
 	handle /api/v1/* {
-		reverse_proxy api:8080 {
-			# Caddy logs this as an "unnecessary header_up". It is not, and it
-			# must not be removed on that advice.
-			#
-			# The default behaviour is to APPEND the peer to whatever
-			# X-Forwarded-For the client already sent. A caller who sets
-			# "X-Forwarded-For: 9.9.9.9" would then arrive as
-			# "9.9.9.9, <real peer>", and the API reads the first entry.
-			# Replacing the header outright is what stops a caller choosing the
-			# identity their rate limit and lockout are counted against.
-			header_up X-Forwarded-For {remote_host}
-		}
+		# X-Forwarded-For is appended to, not replaced, which is Caddy's own
+		# default and is why nothing is set here.
+		#
+		# This used to replace the header. That was right while Caddy was the
+		# edge: nothing stood in front of it, so the peer it saw was the caller
+		# and anything already in the header was the caller's invention.
+		#
+		# Once the bank publishes this through its own reverse proxy, Caddy is
+		# no longer the edge. Replacing would discard the real client and
+		# attribute every public request to the bank's proxy — one shared
+		# rate-limit bucket, where a single abusive caller exhausts the budget
+		# for everybody, and a lockout lands on the wrong identity.
+		#
+		# Appending keeps the whole chain, and the API walks it from the right,
+		# past the proxies named in PAYLINK_TRUSTED_PROXIES, to the first
+		# address it did not put there. That list must therefore name proxies
+		# and nothing else: widen it to a whole LAN range and the clients
+		# inside it are walked past too, which hands them back the ability to
+		# choose their own identity.
+		reverse_proxy api:8080
 	}
 
 	# Everything else is the portal.

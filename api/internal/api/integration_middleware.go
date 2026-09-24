@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -105,7 +106,7 @@ func (s *Server) integrationChannel(next http.Handler) http.Handler {
 		// Signed over the bytes as they arrived, before decryption — which is
 		// what the caller signed, and the only thing both sides agree on.
 		if err := s.keys.Verify(apiKey, []byte(secret),
-			r.Method, r.URL.RequestURI(), r.Header.Get(hdrTS), nonce, sig, raw); err != nil {
+			r.Method, s.signedPaths(r), r.Header.Get(hdrTS), nonce, sig, raw); err != nil {
 			s.writeIntegrationError(w, r, integration, err)
 			return
 		}
@@ -213,3 +214,46 @@ func secretPreview(s string) string {
 // integrationDeadline bounds how long a handler may hold an API call, so a slow
 // gateway cannot pile integration traffic up behind it.
 const integrationDeadline = 45 * time.Second
+
+// signedPaths lists every path this request could honestly have been signed
+// over: the one we were handed, and the one the caller typed if a reverse proxy
+// removed a prefix on the way in.
+//
+// A bank publishes this API at, say, https://share.zemenbank.com/paybylinkapi,
+// and its proxy forwards to us with the prefix stripped. The integrator signs
+// the address they called; we are handed a shorter path. Neither side is wrong,
+// and without this every public call fails as signature_invalid — an error that
+// sends people hunting through their HMAC code for a fault that is not there.
+//
+// The prefix comes from our own configuration, and from X-Forwarded-Prefix only
+// when the request arrived through a proxy we already trust. A caller cannot
+// introduce a path of their own choosing: an untrusted peer's header is ignored
+// outright, and even a trusted one only ever adds a prefix to the path we
+// actually routed — it cannot make a signature valid for a different endpoint.
+func (s *Server) signedPaths(r *http.Request) []string {
+	received := r.URL.RequestURI()
+	paths := []string{received}
+
+	add := func(prefix string) {
+		prefix = strings.TrimRight(strings.TrimSpace(prefix), "/")
+		if prefix == "" || !strings.HasPrefix(prefix, "/") {
+			return
+		}
+		candidate := prefix + received
+		for _, existing := range paths {
+			if existing == candidate {
+				return
+			}
+		}
+		paths = append(paths, candidate)
+	}
+
+	add(s.cfg.PublicPathPrefix)
+
+	// Some proxies announce the prefix they removed. Believed only from a peer
+	// we already trust to speak for the caller at all.
+	if peer, _, err := net.SplitHostPort(r.RemoteAddr); err == nil && s.trustsProxy(peer) {
+		add(r.Header.Get("X-Forwarded-Prefix"))
+	}
+	return paths
+}

@@ -65,8 +65,20 @@ func (v *KeyVerifier) sweep() {
 // scope identifies the credential the nonce belongs to — the API key. body is
 // the raw bytes as received, before any decryption, because that is what the
 // caller signed.
+//
+// uris holds every path this request may legitimately have been signed over.
+// Behind a reverse proxy that strips a path prefix, the caller signs the
+// address they called — https://share.zemenbank.com/paybylinkapi/... — while we
+// are handed the path with the prefix already removed. The two do not match,
+// and a signature computed over the wrong one is indistinguishable from a
+// forgery. Rather than making every integrator sign a path they never used, we
+// check the handful of paths this request could honestly have arrived as.
+//
+// This widens nothing an attacker can use: each candidate is still a full HMAC
+// under the secret, and the candidates are built by us from our own
+// configuration, never from anything the caller sent.
 func (v *KeyVerifier) Verify(
-	scope string, secret []byte, method, uri, ts, nonce, sig string, body []byte,
+	scope string, secret []byte, method string, uris []string, ts, nonce, sig string, body []byte,
 ) error {
 	if len(secret) == 0 {
 		return ErrBadSignature
@@ -84,13 +96,26 @@ func (v *KeyVerifier) Verify(
 		return ErrStale
 	}
 
-	sum := sha256.Sum256(body)
-	mac := hmac.New(sha256.New, secret)
-	fmt.Fprintf(mac, "%s\n%s\n%s\n%s\n%s", method, uri, ts, nonce, hex.EncodeToString(sum[:]))
-	expected := mac.Sum(nil)
-
 	provided, err := b64().DecodeString(sig)
-	if err != nil || subtle.ConstantTimeCompare(expected, provided) != 1 {
+	if err != nil {
+		return ErrBadSignature
+	}
+	sum := hex.EncodeToString(sliceSum(body))
+
+	matched := false
+	for _, uri := range uris {
+		if uri == "" {
+			continue
+		}
+		mac := hmac.New(sha256.New, secret)
+		fmt.Fprintf(mac, "%s\n%s\n%s\n%s\n%s", method, uri, ts, nonce, sum)
+		// Every candidate is compared, rather than breaking on the first match,
+		// so how long this takes does not depend on which one was right.
+		if subtle.ConstantTimeCompare(mac.Sum(nil), provided) == 1 {
+			matched = true
+		}
+	}
+	if !matched {
 		return ErrBadSignature
 	}
 
@@ -116,4 +141,11 @@ func SignOutbound(secret []byte, timestamp string, body []byte) string {
 	mac := hmac.New(sha256.New, secret)
 	fmt.Fprintf(mac, "%s\n%s", timestamp, hex.EncodeToString(sum[:]))
 	return b64().EncodeToString(mac.Sum(nil))
+}
+
+// sliceSum is sha256 of the body as a slice, so the digest can be computed once
+// and reused across candidate paths.
+func sliceSum(body []byte) []byte {
+	sum := sha256.Sum256(body)
+	return sum[:]
 }

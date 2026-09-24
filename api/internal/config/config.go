@@ -39,6 +39,15 @@ type Config struct {
 	PublicBaseURL string
 	CORSOrigins   []string
 
+	// PublicPathPrefix is the path a reverse proxy publishes this service
+	// under and removes before forwarding — "/paybylinkapi", say.
+	//
+	// It exists for one reason: an integrator signs the address they called,
+	// and we are handed the path with the prefix already gone. Without knowing
+	// the prefix we cannot reproduce what they signed, and every public call is
+	// refused as though the signature were forged.
+	PublicPathPrefix string
+
 	DefaultGatewayHost string
 	GatewayAPIVersion  string
 	GatewayTimeout     time.Duration
@@ -260,6 +269,7 @@ func Load() (*Config, error) {
 		TokenTTL:           duration("PAYLINK_SESSION_TTL", 15*time.Minute),
 		SessionIdle:        duration("PAYLINK_SESSION_IDLE", 3*time.Minute),
 		PublicBaseURL:      env("PAYLINK_PUBLIC_BASE_URL", "http://localhost:3000"),
+		PublicPathPrefix:   env("PAYLINK_PUBLIC_PATH_PREFIX", ""),
 		CORSOrigins:        splitList(env("PAYLINK_CORS_ORIGINS", "http://localhost:3000,http://localhost:3100")),
 		DefaultGatewayHost: env("PAYLINK_GATEWAY_HOST", "test-gateway.mastercard.com"),
 		GatewayAPIVersion:  env("PAYLINK_GATEWAY_API_VERSION", "100"),

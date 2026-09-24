@@ -73,10 +73,25 @@ const securityHeaders = [
   },
 ];
 
+// The path a reverse proxy publishes this under, when it publishes it under
+// one — "/paybylinkapi", say.
+//
+// Baked in at build time because Next needs it to emit asset URLs: without it
+// the browser asks for /_next/... at the proxy's root, which is not routed
+// here, and the page arrives with no styles and no JavaScript. That failure
+// looks like a broken build rather than a path problem, which is why it is
+// worth being deliberate about.
+//
+// Set PAYLINK_BASE_PATH at image build time, and only when the proxy keeps the
+// prefix on the way through. A proxy that strips it wants this left empty.
+const basePath = (process.env.PAYLINK_BASE_PATH ?? "").replace(/\/$/, "");
+
 const nextConfig: NextConfig = {
   // Emits a self-contained server with only the modules it actually uses, so
   // the runtime image carries no node_modules tree and no build toolchain.
   output: "standalone",
+
+  ...(basePath ? { basePath, assetPrefix: basePath } : {}),
 
   allowedDevOrigins: devOrigins(),
 

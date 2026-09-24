@@ -100,10 +100,27 @@ PAYLINK_ENV=production
 PAYLINK_PUBLIC_BASE_URL=https://$HOSTNAME_IN:$PORT_IN
 PAYLINK_CORS_ORIGINS=https://$HOSTNAME_IN:$PORT_IN
 
-# Caddy reaches the API over the compose network, and the API believes the
-# forwarded header only from these ranges. Widen this and a caller could choose
-# their own identity, walking around every rate limit and lockout.
-PAYLINK_TRUSTED_PROXIES=172.16.0.0/12,10.0.0.0/8,192.168.0.0/16,127.0.0.0/8
+# The proxies whose X-Forwarded-For is believed, and nothing else.
+#
+# The API walks the forwarded chain from the right, past every address named
+# here, to the first one it did not put there — and calls that the client. So
+# this must list proxies only. A whole LAN range here means the clients inside
+# it are walked past as well, and any of them can prepend an address and be
+# attributed to it, which is every rate limit and lockout undone at once.
+#
+# 172.16.0.0/12 covers the compose network Caddy sits on. Add the bank's
+# reverse proxy here when this is published through one — without it, every
+# public caller is attributed to that proxy and shares a single rate-limit
+# bucket, where one abusive caller exhausts the budget for all of them.
+PAYLINK_TRUSTED_PROXIES=172.16.0.0/12,127.0.0.0/8
+
+# The address customers and integrators reach this on from outside, when a
+# reverse proxy publishes it. Leave both empty for an internal-only deployment.
+#
+# PAYLINK_PUBLIC_PATH_PREFIX is the path the proxy publishes under and strips
+# before forwarding. The API signature covers the path, so without this every
+# public call is refused as signature_invalid — see ONPREM.md.
+PAYLINK_PUBLIC_PATH_PREFIX=
 
 PAYLINK_JWT_SECRET=$JWT_SECRET
 PAYLINK_ENCRYPTION_KEY=$ENCRYPTION_KEY

@@ -27,7 +27,7 @@ func TestValidSignatureIsAccepted(t *testing.T) {
 	body := []byte(`{"iv":"x","ct":"y"}`)
 	ts, nonce := nowMillis(), "nonce-1"
 
-	err := v.Verify("pk_test_a", testSecret, "POST", "/api/v1/integration/links",
+	err := v.Verify("pk_test_a", testSecret, "POST", []string{"/api/v1/integration/links"},
 		ts, nonce, sign(testSecret, "POST", "/api/v1/integration/links", ts, nonce, body), body)
 	if err != nil {
 		t.Fatalf("a correctly signed request was refused: %v", err)
@@ -41,7 +41,7 @@ func TestWrongSecretIsRefused(t *testing.T) {
 	ts, nonce := nowMillis(), "nonce-1"
 	forged := sign([]byte("not-the-right-secret"), "POST", "/x", ts, nonce, body)
 
-	if err := v.Verify("pk_test_a", testSecret, "POST", "/x", ts, nonce, forged, body); err != ErrBadSignature {
+	if err := v.Verify("pk_test_a", testSecret, "POST", []string{"/x"}, ts, nonce, forged, body); err != ErrBadSignature {
 		t.Fatalf("expected ErrBadSignature, got %v", err)
 	}
 }
@@ -54,10 +54,10 @@ func TestReplayIsRefused(t *testing.T) {
 	ts, nonce := nowMillis(), "nonce-once"
 	sig := sign(testSecret, "POST", "/x", ts, nonce, body)
 
-	if err := v.Verify("pk_test_a", testSecret, "POST", "/x", ts, nonce, sig, body); err != nil {
+	if err := v.Verify("pk_test_a", testSecret, "POST", []string{"/x"}, ts, nonce, sig, body); err != nil {
 		t.Fatalf("first use failed: %v", err)
 	}
-	if err := v.Verify("pk_test_a", testSecret, "POST", "/x", ts, nonce, sig, body); err != ErrReplay {
+	if err := v.Verify("pk_test_a", testSecret, "POST", []string{"/x"}, ts, nonce, sig, body); err != ErrReplay {
 		t.Fatalf("expected ErrReplay on the second use, got %v", err)
 	}
 }
@@ -70,10 +70,10 @@ func TestNoncesAreScopedToTheKey(t *testing.T) {
 	ts, nonce := nowMillis(), "shared-nonce"
 	sig := sign(testSecret, "POST", "/x", ts, nonce, body)
 
-	if err := v.Verify("pk_test_a", testSecret, "POST", "/x", ts, nonce, sig, body); err != nil {
+	if err := v.Verify("pk_test_a", testSecret, "POST", []string{"/x"}, ts, nonce, sig, body); err != nil {
 		t.Fatalf("first key failed: %v", err)
 	}
-	if err := v.Verify("pk_test_b", testSecret, "POST", "/x", ts, nonce, sig, body); err != nil {
+	if err := v.Verify("pk_test_b", testSecret, "POST", []string{"/x"}, ts, nonce, sig, body); err != nil {
 		t.Fatalf("a second key was blocked by the first key's nonce: %v", err)
 	}
 }
@@ -85,13 +85,13 @@ func TestStaleTimestampIsRefused(t *testing.T) {
 	old := strconv.FormatInt(time.Now().Add(-ClockSkew-time.Minute).UnixMilli(), 10)
 	sig := sign(testSecret, "POST", "/x", old, "n", body)
 
-	if err := v.Verify("pk_test_a", testSecret, "POST", "/x", old, "n", sig, body); err != ErrStale {
+	if err := v.Verify("pk_test_a", testSecret, "POST", []string{"/x"}, old, "n", sig, body); err != ErrStale {
 		t.Fatalf("expected ErrStale, got %v", err)
 	}
 	// And the future is no better, or a wrong clock becomes a way in.
 	future := strconv.FormatInt(time.Now().Add(ClockSkew+time.Minute).UnixMilli(), 10)
 	sig = sign(testSecret, "POST", "/x", future, "n2", body)
-	if err := v.Verify("pk_test_a", testSecret, "POST", "/x", future, "n2", sig, body); err != ErrStale {
+	if err := v.Verify("pk_test_a", testSecret, "POST", []string{"/x"}, future, "n2", sig, body); err != ErrStale {
 		t.Fatalf("expected ErrStale for a future timestamp, got %v", err)
 	}
 }
@@ -104,7 +104,7 @@ func TestAlteredBodyIsRefused(t *testing.T) {
 	sig := sign(testSecret, "POST", "/x", ts, nonce, original)
 
 	altered := []byte(`{"amount":"9000.00"}`)
-	if err := v.Verify("pk_test_a", testSecret, "POST", "/x", ts, nonce, sig, altered); err != ErrBadSignature {
+	if err := v.Verify("pk_test_a", testSecret, "POST", []string{"/x"}, ts, nonce, sig, altered); err != ErrBadSignature {
 		t.Fatalf("an altered body was accepted: %v", err)
 	}
 }
@@ -117,7 +117,7 @@ func TestSignatureIsBoundToTheRequestLine(t *testing.T) {
 	ts, nonce := nowMillis(), "n"
 	sig := sign(testSecret, "GET", "/api/v1/integration/ping", ts, nonce, body)
 
-	if err := v.Verify("pk_test_a", testSecret, "POST", "/api/v1/integration/links",
+	if err := v.Verify("pk_test_a", testSecret, "POST", []string{"/api/v1/integration/links"},
 		ts, nonce, sig, body); err != ErrBadSignature {
 		t.Fatalf("a signature was reused on a different request: %v", err)
 	}
@@ -128,10 +128,10 @@ func TestMissingPiecesAreRefused(t *testing.T) {
 	body := []byte(`{}`)
 	ts := nowMillis()
 
-	if err := v.Verify("pk", nil, "POST", "/x", ts, "n", "sig", body); err != ErrBadSignature {
+	if err := v.Verify("pk", nil, "POST", []string{"/x"}, ts, "n", "sig", body); err != ErrBadSignature {
 		t.Fatalf("an empty secret was not refused: %v", err)
 	}
-	if err := v.Verify("pk", testSecret, "POST", "/x", ts, "", "sig", body); err != ErrBadSignature {
+	if err := v.Verify("pk", testSecret, "POST", []string{"/x"}, ts, "", "sig", body); err != ErrBadSignature {
 		t.Fatalf("an empty nonce was not refused: %v", err)
 	}
 }
@@ -179,5 +179,71 @@ func TestOutboundSignatureIsStableAndKeyed(t *testing.T) {
 	}
 	if SignOutbound(testSecret, "1757000000001", body) == first {
 		t.Fatal("the timestamp is not covered by the signature")
+	}
+}
+
+// Behind a proxy that strips a path prefix, the caller signs the address they
+// called and we are handed a shorter path. Both have to verify, or the whole
+// public deployment answers signature_invalid to correct clients.
+func TestSignatureOverThePublicPathIsAccepted(t *testing.T) {
+	v := NewKeyVerifier()
+	body := []byte(`{"iv":"x","ct":"y"}`)
+	ts, nonce := nowMillis(), "n"
+
+	// What the integrator called and signed.
+	publicPath := "/paybylinkapi/api/v1/integration/links"
+	sig := sign(testSecret, "POST", publicPath, ts, nonce, body)
+
+	// What we were handed, plus what it could have been before the proxy.
+	candidates := []string{"/api/v1/integration/links", publicPath}
+	if err := v.Verify("pk_test_a", testSecret, "POST", candidates, ts, nonce, sig, body); err != nil {
+		t.Fatalf("a request signed over the public path was refused: %v", err)
+	}
+}
+
+// The internal caller signs the path as we receive it, and must keep working
+// on the very same deployment.
+func TestSignatureOverTheInternalPathStillWorks(t *testing.T) {
+	v := NewKeyVerifier()
+	body := []byte(`{}`)
+	ts, nonce := nowMillis(), "n"
+
+	internal := "/api/v1/integration/links"
+	sig := sign(testSecret, "POST", internal, ts, nonce, body)
+
+	candidates := []string{internal, "/paybylinkapi" + internal}
+	if err := v.Verify("pk_test_a", testSecret, "POST", candidates, ts, nonce, sig, body); err != nil {
+		t.Fatalf("a request signed over the internal path was refused: %v", err)
+	}
+}
+
+// Accepting more than one path must not accept a path nobody offered.
+func TestAnUnlistedPathIsStillRefused(t *testing.T) {
+	v := NewKeyVerifier()
+	body := []byte(`{}`)
+	ts, nonce := nowMillis(), "n"
+	sig := sign(testSecret, "POST", "/somewhere/else", ts, nonce, body)
+
+	candidates := []string{"/api/v1/integration/links", "/paybylinkapi/api/v1/integration/links"}
+	if err := v.Verify("pk_test_a", testSecret, "POST", candidates, ts, nonce, sig, body); err != ErrBadSignature {
+		t.Fatalf("a signature over an unrelated path was accepted: %v", err)
+	}
+}
+
+// A nonce is spent once, whichever candidate path matched — otherwise the
+// prefix tolerance would quietly become a way to replay each request twice.
+func TestReplayIsRefusedAcrossCandidatePaths(t *testing.T) {
+	v := NewKeyVerifier()
+	body := []byte(`{}`)
+	ts, nonce := nowMillis(), "n-once"
+	publicPath := "/paybylinkapi/api/v1/integration/links"
+	sig := sign(testSecret, "POST", publicPath, ts, nonce, body)
+	candidates := []string{"/api/v1/integration/links", publicPath}
+
+	if err := v.Verify("pk_test_a", testSecret, "POST", candidates, ts, nonce, sig, body); err != nil {
+		t.Fatalf("first use failed: %v", err)
+	}
+	if err := v.Verify("pk_test_a", testSecret, "POST", candidates, ts, nonce, sig, body); err != ErrReplay {
+		t.Fatalf("expected ErrReplay on the second use, got %v", err)
 	}
 }
